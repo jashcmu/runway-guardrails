@@ -1,0 +1,1230 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  Hiring
+  Marketing
+  SaaS
+  Cloud
+  G_A
+}
+
+model Company {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  slug         String        @unique // Human-friendly identifier
+  cashBalance  Float         @default(0) // Current cash balance
+  targetMonths Int?                      // Target runway in months
+  
+  // New fields for enhanced features
+  industry     String?       // For benchmarking
+  fundingStage String?       // Pre-seed, Seed, Series A, etc.
+  isPublic     Boolean       @default(false) // Public dashboard option
+  publicSlug   String? // Public URL slug (unique constraint removed - MongoDB doesn't support unique on nullable fields with multiple nulls)
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+  budgets      Budget[]
+  alerts       Alert[]
+  invoices     Invoice[]
+  users        CompanyUser[]
+  accountingAccounts AccountingAccount[] // Chart of Accounts
+  journalEntries JournalEntry[]       // Journal entries
+  revenues     Revenue[]              // Revenue tracking
+  reconciliations BankReconciliation[] // Bank reconciliations
+  vendorContracts VendorContract[]    // Vendor contracts
+  comments     Comment[]              // Collaboration comments
+  cashFlowPredictions CashFlowPrediction[] // ML predictions
+  integrations Integration[]          // Third-party integrations
+  gstReports   GSTReport[]           // GST filing reports
+  fundraisingRounds FundraisingRound[] // Cap table tracking
+  benchmarks   Benchmark[]            // Competitor benchmarking
+  
+  // New relations
+  vendors      Vendor[]
+  bills        Bill[]
+  purchaseOrders PurchaseOrder[]
+  goodsReceivedNotes GoodsReceivedNote[]
+  paymentBatches PaymentBatch[]
+  subscriptions Subscription[]
+  recurringExpenses RecurringExpense[]
+  revenueRecognitions RevenueRecognition[]
+  customerCredits CustomerCredit[]
+  workflows    Workflow[]
+  dashboards   Dashboard[]
+  documents    Document[]
+  bankAccounts BankAccount[]
+
+  @@map("companies")
+}
+
+model Transaction {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  companyId      String    @db.ObjectId
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  amount         Float
+  category       Category
+  description    String?
+  date           DateTime
+  currency       String    @default("INR")
+  
+  // Recurring vs One-Time tracking
+  expenseType    String    @default("recurring") // "one-time" or "recurring"
+  frequency      String?   // "monthly", "quarterly", "yearly", "weekly" (only for recurring)
+  nextDueDate    DateTime? // When next payment is expected (for recurring)
+  endDate        DateTime? // When recurring expense ends (null = ongoing)
+  isAutoDetected Boolean   @default(false) // Was this auto-detected from bank statement?
+  
+  // Enhanced fields
+  vendorName     String?   // Vendor/merchant name
+  receiptUrl     String?   // Receipt/invoice attachment
+  approvedBy     String?   // User ID who approved
+  approvedAt     DateTime? // When approved
+  status         String    @default("approved") // pending, approved, rejected
+  
+  gstRate        Int?      @default(0)
+  gstAmount      Float?
+  cgst           Float?
+  sgst           Float?
+  igst           Float?
+  isInterState   Boolean   @default(false)
+  tdsAmount      Float?
+  tdsSection     String?   // TDS section (194J, etc.)
+  
+  comments       Comment[] // Collaboration
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("transactions")
+}
+
+model Budget {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId String   @db.ObjectId
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  amount    Float
+  category  Category
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("budgets")
+}
+
+model Alert {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  companyId String    @db.ObjectId
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  message   String
+  severity  String
+  riskLevel String?
+  category  Category?
+  threshold Int?
+  monthKey  String?
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([companyId, category, threshold, monthKey], name: "alert_unique")
+  @@map("alerts")
+}
+
+model Invoice {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String    @db.ObjectId
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoiceNumber String    @unique
+  customerName  String
+  customerGSTIN String?
+  amount        Float
+  gstRate       Int       @default(0)
+  gstAmount     Float     @default(0)
+  cgst          Float     @default(0)
+  sgst          Float     @default(0)
+  igst          Float     @default(0)
+  totalAmount   Float
+  isInterState  Boolean   @default(false)
+  invoiceDate   DateTime
+  dueDate       DateTime?
+  status        String    @default("draft") // draft, sent, paid, overdue, cancelled
+  
+  // AR (Accounts Receivable) tracking
+  paidAmount    Float     @default(0)
+  balanceAmount Float?    // Calculated: totalAmount - paidAmount
+  paidDate      DateTime? // When fully paid
+  
+  items         String?
+  hsnSacCodes   String?
+  placeOfSupply String?
+  revenues      Revenue[] // Link to revenue records
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, dueDate])
+  @@map("invoices")
+}
+
+model User {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  email         String          @unique
+  emailVerified DateTime?       @map("email_verified")
+  name          String?
+  image         String?         // Google profile picture
+  password      String?         // Optional: null for OAuth users
+  
+  // OAuth fields - NextAuth expects 'accounts' relation
+  accounts      Account[]       // OAuth accounts (Google, etc.)
+  sessions      Session[]       // Active sessions
+  
+  lastLoginAt   DateTime?
+  companies     CompanyUser[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("users")
+}
+
+// NextAuth.js OAuth account - MUST be named "Account" for Prisma adapter
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.String
+  access_token      String? @db.String
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.String
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("nextauth_accounts")
+}
+
+// NextAuth.js Session
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique @map("session_token")
+  userId       String   @db.ObjectId
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// NextAuth.js Verification Token
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model CompanyUser {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId String   @db.ObjectId
+  userId    String   @db.ObjectId
+  role      String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@map("company_users")
+}
+
+// Chart of Accounts - Indian Accounting Standards
+model AccountingAccount {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  accountCode String   // e.g., "1000", "2000", "3000"
+  name        String   // e.g., "Cash", "Bank - HDFC", "Revenue"
+  type        String   // Asset, Liability, Equity, Revenue, Expense
+  subtype     String?  // Current/Fixed Asset, Current/Long-term Liability
+  category    String?  // For grouping (e.g., "Bank Accounts", "Receivables")
+  
+  balance     Float    @default(0)
+  isActive    Boolean  @default(true)
+  
+  // Indian accounting specifics
+  accountGroup String? // For Indian Balance Sheet format
+  isGSTApplicable Boolean @default(false)
+  
+  journalEntries JournalEntry[]
+  reconciliations BankReconciliation[] @relation("BankAccount")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([companyId, accountCode])
+  @@map("accounts_chart")
+}
+
+// Journal Entries - Core of double-entry
+model JournalEntry {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  accountId   String   @db.ObjectId
+  account     AccountingAccount @relation(fields: [accountId], references: [id])
+  
+  transactionId String? @db.ObjectId  // Link to original transaction
+  invoiceId     String? @db.ObjectId  // Link to invoice
+  revenueId     String? @db.ObjectId  // Link to revenue
+  
+  date        DateTime
+  description String
+  
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  
+  reference   String?  // Invoice #, Receipt #, etc.
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([companyId, date])
+  @@map("journal_entries")
+}
+
+// Revenue Tracking
+model Revenue {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  invoiceId   String?  @db.ObjectId
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+  
+  amount      Float
+  date        DateTime
+  description String
+  
+  // GST details
+  gstRate     Int      @default(0)
+  gstAmount   Float    @default(0)
+  
+  // Payment tracking
+  amountReceived Float  @default(0)
+  status      String   @default("pending") // pending, partial, paid
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("revenues")
+}
+
+// Bank Reconciliation
+model BankReconciliation {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId       String   @db.ObjectId
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  bankAccountId   String   @db.ObjectId
+  bankAccount     AccountingAccount @relation("BankAccount", fields: [bankAccountId], references: [id])
+  
+  statementDate   DateTime
+  statementBalance Float
+  bookBalance     Float
+  difference      Float
+  
+  isReconciled    Boolean  @default(false)
+  reconciledBy    String?
+  reconciledAt    DateTime?
+  
+  notes           String?
+  createdAt       DateTime @default(now())
+  
+  @@map("bank_reconciliations")
+}
+
+// Vendor Contract Management
+model VendorContract {
+  id                   String    @id @default(auto()) @map("_id") @db.ObjectId
+  companyId            String    @db.ObjectId
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  vendorName           String
+  service              String
+  category             Category
+  monthlyAmount        Float
+  annualCommitment     Float?
+  currency             String    @default("INR")
+  
+  startDate            DateTime
+  renewalDate          DateTime
+  cancellationDeadline DateTime? // Alert X days before renewal
+  autoRenews           Boolean   @default(true)
+  
+  contractUrl          String?   // Link to contract document
+  notes                String?
+  status               String    @default("active") // active, cancelled, expired
+  
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  
+  @@map("vendor_contracts")
+}
+
+// Comments & Collaboration
+model Comment {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String      @db.ObjectId
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  transactionId String?     @db.ObjectId
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  
+  userId        String      // Who posted the comment
+  userName      String      // Cached for performance
+  content       String
+  
+  // Threading support
+  parentId      String?     @db.ObjectId
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@map("comments")
+}
+
+// Cash Flow Predictions (ML-based)
+model CashFlowPrediction {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  predictionDate DateTime // Future date being predicted
+  predictedBurn  Float
+  predictedRevenue Float @default(0)
+  predictedBalance Float
+  confidence     Float    // 0-100% confidence score
+  
+  // Model metadata
+  modelVersion   String
+  factors        String?  // JSON of factors considered
+  
+  createdAt      DateTime @default(now())
+  
+  @@unique([companyId, predictionDate], name: "companyId_predictionDate")
+  @@map("cash_flow_predictions")
+}
+
+// Third-Party Integrations
+model Integration {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  provider      String   // stripe, razorpay, slack, tally, zoho, etc.
+  status        String   @default("disconnected") // connected, disconnected, error
+  
+  // Encrypted credentials
+  accessToken   String?
+  refreshToken  String?
+  apiKey        String?
+  
+  lastSyncAt    DateTime?
+  syncFrequency String   @default("daily") // manual, hourly, daily, weekly
+  
+  settings      String?  // JSON config
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([companyId, provider])
+  @@map("integrations")
+}
+
+// GST Report Generation
+model GSTReport {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId         String   @db.ObjectId
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  month             String   // YYYY-MM format
+  gstCollected      Float    // From sales/invoices
+  gstPaid           Float    // From purchases
+  netGST            Float    // Amount to pay/claim
+  
+  // GSTR file status
+  gstr1Status       String   @default("pending") // pending, generated, filed
+  gstr3bStatus      String   @default("pending")
+  
+  gstr1FileUrl      String?  // JSON/Excel download
+  gstr3bFileUrl     String?
+  
+  filedAt           DateTime?
+  filedBy           String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([companyId, month])
+  @@map("gst_reports")
+}
+
+// Fundraising & Cap Table
+model FundraisingRound {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId         String   @db.ObjectId
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  roundName         String   // Pre-seed, Seed, Series A, etc.
+  amountRaised      Float
+  preMoneyValuation Float?
+  postMoneyValuation Float?
+  
+  investorNames     String?  // Comma-separated or JSON
+  leadInvestor      String?
+  
+  closingDate       DateTime
+  dilution          Float?   // Percentage diluted
+  
+  notes             String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("fundraising_rounds")
+}
+
+// Competitor Benchmarking
+model Benchmark {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  month         String   // YYYY-MM format
+  
+  // Your metrics
+  yourBurnRate  Float
+  yourRevenue   Float    @default(0)
+  yourRunway    Float?
+  
+  // Peer benchmarks (aggregated, anonymized)
+  peerBurnP50   Float?   // 50th percentile (median)
+  peerBurnP75   Float?   // 75th percentile
+  peerRevenueP50 Float?
+  peerRevenueP75 Float?
+  
+  industry      String
+  fundingStage  String
+  peerCount     Int      @default(0) // How many peers in comparison
+  
+  createdAt     DateTime @default(now())
+  
+  @@unique([companyId, month])
+  @@map("benchmarks")
+}
+
+// Referral Program
+model Referral {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  referrerEmail     String   // Who referred
+  referredEmail     String   // Who was referred
+  
+  status            String   @default("pending") // pending, converted, expired
+  
+  referrerReward    String?  // e.g., "3 months free"
+  referredReward    String?  // e.g., "1 month free"
+  
+  convertedAt       DateTime?
+  expiresAt         DateTime
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([referrerEmail, referredEmail])
+  @@map("referrals")
+}
+
+// Email Reports Schedule
+model EmailReport {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  
+  recipientEmail String
+  frequency     String   @default("weekly") // daily, weekly, monthly
+  
+  reportTypes   String   // JSON array: ["runway", "burn", "alerts"]
+  
+  isActive      Boolean  @default(true)
+  lastSentAt    DateTime?
+  nextSendAt    DateTime
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@map("email_reports")
+}
+
+// ============ RBAC & Permissions ============
+
+model Role {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  name        String   // Admin, Finance Manager, Accountant, Viewer, Auditor
+  description String?
+  permissions Json     // {transactions: {read: true, write: false, delete: false}}
+  isSystem    Boolean  @default(false) // System roles can't be deleted
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([companyId, name])
+  @@map("roles")
+}
+
+model ActivityLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId  String   @db.ObjectId
+  userId     String   @db.ObjectId
+  userName   String   // Cached for performance
+  
+  action     String   // created, updated, deleted, approved, rejected
+  entityType String   // transaction, invoice, bill, budget
+  entityId   String?
+  
+  changes    Json?    // {before: {...}, after: {...}}
+  metadata   Json?    // Additional context
+  
+  ipAddress  String?
+  userAgent  String?
+  
+  timestamp  DateTime @default(now())
+  
+  @@index([companyId, timestamp])
+  @@index([companyId, entityType, entityId])
+  @@index([userId, timestamp])
+  @@map("activity_logs")
+}
+
+// ============ Bill Processing & AP ============
+
+model Vendor {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Basic Info
+  name        String
+  displayName String?
+  legalName   String?
+  
+  // Contact
+  email       String?
+  phone       String?
+  website     String?
+  address     String?
+  
+  // Tax Info
+  gstin       String?
+  pan         String?
+  tan         String?
+  
+  // Banking
+  accountNumber String?
+  ifscCode      String?
+  bankName      String?
+  accountHolderName String?
+  
+  // Verification
+  verificationStatus String @default("pending") // pending, verified, rejected
+  verifiedBy         String? @db.ObjectId
+  verifiedAt         DateTime?
+  kycDocuments       Json[]  // [{type, url, uploadedAt}]
+  
+  // Payment Terms
+  paymentTerms  String  @default("net30") // net15, net30, net45, net60, immediate, advance
+  creditLimit   Float?
+  creditDays    Int     @default(30)
+  
+  // Categories & Tags
+  category      String? // SaaS, Cloud, Marketing, Consulting, Office Supplies
+  tags          String[]
+  
+  // Spend Analytics
+  totalSpend      Float    @default(0)
+  monthlyAvgSpend Float    @default(0)
+  lastPaymentDate DateTime?
+  billsCount      Int      @default(0)
+  
+  // Status
+  isActive    Boolean @default(true)
+  blacklisted Boolean @default(false)
+  blacklistReason String?
+  
+  // Notes
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([companyId, gstin])
+  @@index([companyId, isActive])
+  @@index([companyId, name])
+  @@map("vendors")
+}
+
+model Bill {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId String   @db.ObjectId
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Bill Details
+  billNumber  String
+  vendorId    String?  @db.ObjectId
+  vendorName  String
+  vendorGSTIN String?
+  
+  billDate    DateTime
+  dueDate     DateTime?
+  
+  // Amounts
+  subtotal    Float
+  taxAmount   Float    @default(0)
+  totalAmount Float
+  paidAmount  Float    @default(0)
+  balanceAmount Float  // totalAmount - paidAmount
+  
+  currency    String   @default("INR")
+  
+  // Line Items
+  lineItems   Json[]   // [{description, quantity, rate, amount, hsnCode, taxRate}]
+  
+  // Status
+  status           String @default("draft") // draft, pending_approval, approved, rejected, paid, partial, cancelled
+  approvalStatus   String @default("pending") // pending, approved, rejected
+  paymentStatus    String @default("unpaid") // unpaid, partial, paid, overdue
+  
+  // Approvals
+  approvers        Json[] // [{userId, userName, status, timestamp, comments}]
+  approvedBy       String? @db.ObjectId
+  approvedAt       DateTime?
+  rejectedBy       String? @db.ObjectId
+  rejectedAt       DateTime?
+  rejectionReason  String?
+  
+  // Payment Tracking
+  paymentDate      DateTime?
+  paymentMethod    String?  // bank_transfer, upi, cheque, card, cash
+  paymentReference String?
+  paymentNotes     String?
+  
+  // Documents
+  originalFileUrl  String
+  extractedData    Json?    // Raw OCR output
+  attachments      Json[]   // [{name, url, uploadedAt}]
+  
+  // Three-Way Matching
+  purchaseOrderId     String? @db.ObjectId
+  goodsReceivedNoteId String? @db.ObjectId
+  matchStatus         String? // matched, unmatched, partial, discrepancy
+  matchDiscrepancies  Json?   // Details of any mismatches
+  
+  // Categories
+  category    String?
+  department  String?
+  project     String?
+  
+  // Recurring
+  isRecurring Boolean @default(false)
+  frequency   String? // monthly, quarterly
+  
+  // Audit Trail
+  uploadedBy    String   @db.ObjectId
+  uploadedAt    DateTime @default(now())
+  processedAt   DateTime?
+  processedBy   String?  @db.ObjectId
+  
+  notes         String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([companyId, billNumber, vendorName])
+  @@index([companyId, status])
+  @@index([companyId, paymentStatus])
+  @@index([companyId, dueDate])
+  @@index([companyId, vendorId])
+  @@map("bills")
+}
+
+model PurchaseOrder {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  poNumber    String
+  vendorId    String   @db.ObjectId
+  vendorName  String
+  
+  orderDate   DateTime
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  
+  items       Json[]   // [{item, description, quantity, rate, amount, hsnCode}]
+  subtotal    Float
+  taxAmount   Float
+  totalAmount Float
+  
+  status      String   @default("draft") // draft, sent, acknowledged, partial, received, cancelled
+  
+  // Matching
+  billId      String?  @db.ObjectId
+  grnId       String?  @db.ObjectId
+  
+  // Approval
+  approvedBy  String?  @db.ObjectId
+  approvedAt  DateTime?
+  
+  notes       String?
+  
+  createdBy   String   @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([companyId, poNumber])
+  @@index([companyId, status])
+  @@map("purchase_orders")
+}
+
+model GoodsReceivedNote {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId        String   @db.ObjectId
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  grnNumber        String
+  purchaseOrderId  String?  @db.ObjectId
+  poNumber         String?
+  vendorName       String
+  
+  receivedDate     DateTime
+  receivedBy       String   @db.ObjectId
+  receivedByName   String
+  
+  items            Json[]   // [{item, orderedQty, receivedQty, acceptedQty, rejectedQty, reason}]
+  
+  inspectionNotes  String?
+  qualityCheck     String?  // passed, failed, partial
+  
+  createdAt        DateTime @default(now())
+  
+  @@unique([companyId, grnNumber])
+  @@index([companyId, purchaseOrderId])
+  @@map("goods_received_notes")
+}
+
+model PaymentBatch {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId       String   @db.ObjectId
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  batchNumber     String
+  batchDate       DateTime
+  
+  payments        Json[]   // [{billId, vendorName, accountNumber, ifsc, amount, reference}]
+  totalAmount     Float
+  paymentsCount   Int
+  
+  status          String   @default("draft") // draft, processing, completed, failed, partial
+  
+  // Payment Method
+  paymentMethod   String   // bank_transfer, cheque, upi, rtgs, neft, imps
+  paymentFile     String?  // Generated payment file URL
+  
+  processedAt     DateTime?
+  processedBy     String?  @db.ObjectId
+  
+  failedPayments  Json[]   // [{billId, reason}]
+  
+  notes           String?
+  
+  createdBy       String   @db.ObjectId
+  createdAt       DateTime @default(now())
+  
+  @@unique([companyId, batchNumber])
+  @@map("payment_batches")
+}
+
+// ============ Approval Workflows ============
+
+model ApprovalPolicy {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  
+  name        String
+  entityType  String   // transaction, bill, expense_claim, budget
+  
+  // Conditions
+  conditions  Json     // {amount: {gt: 50000}, category: {in: ['Marketing']}}
+  
+  // Approvers
+  approvers   String[] // Array of user IDs
+  sequence    String   @default("parallel") // parallel, sequential
+  requireAll  Boolean  @default(false) // If false, any one approval is enough
+  
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0) // Higher priority policies are checked first
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId, entityType, isActive])
+  @@map("approval_policies")
+}
+
+model ApprovalRequest {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  
+  entityType  String
+  entityId    String   @db.ObjectId
+  policyId    String?  @db.ObjectId
+  
+  requestedBy String   @db.ObjectId
+  requestedByName String
+  
+  approvers   Json[]   // [{userId, userName, status: 'pending'|'approved'|'rejected', timestamp, comments}]
+  
+  status      String   @default("pending") // pending, approved, rejected, cancelled
+  
+  // Final decision
+  finalApprovedBy String? @db.ObjectId
+  finalApprovedAt DateTime?
+  finalRejectedBy String? @db.ObjectId
+  finalRejectedAt DateTime?
+  
+  notes       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId, status])
+  @@index([entityType, entityId])
+  @@map("approval_requests")
+}
+
+// ============ Revenue Recognition & AR ============
+
+model Subscription {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Product subscription info
+  name          String   // Service/product name
+  customerId    String?
+  customerName  String?
+  customerEmail String?
+  
+  // Plan Details
+  planName      String?
+  planType      String?  // Basic, Pro, Enterprise
+  billingCycle  String   // monthly, quarterly, semi_annual, annually, yearly
+  
+  startDate     DateTime
+  endDate       DateTime?
+  
+  // Pricing
+  amount        Float
+  setupFee      Float    @default(0)
+  currency      String   @default("INR")
+  
+  // Discounts
+  discountPercent Float?
+  discountAmount  Float?
+  
+  // Status
+  status        String   // active, cancelled, paused, expired, trial
+  
+  // Revenue Recognition
+  recognitionMethod String? @default("straight_line") // straight_line, milestone, usage_based
+  deferredRevenue   Float  @default(0)
+  recognizedRevenue Float  @default(0)
+  
+  // Billing
+  nextBillingDate DateTime?
+  lastBilledDate  DateTime?
+  autoRenew       Boolean @default(true)
+  
+  // Cancellation
+  cancelledAt     DateTime?
+  cancelledBy     String?  @db.ObjectId
+  cancellationReason String?
+  
+  // Category
+  category      Category @default(SaaS)
+  
+  metadata        Json?    // Additional custom fields
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([companyId, status])
+  @@index([companyId, nextBillingDate])
+  @@map("subscriptions")
+}
+
+model RecurringExpense {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId       String   @db.ObjectId
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  description     String
+  vendorName      String?
+  
+  amount          Float
+  currency        String   @default("INR")
+  
+  frequency       String   // weekly, monthly, quarterly, yearly
+  category        Category
+  
+  startDate       DateTime
+  endDate         DateTime?
+  
+  nextPaymentDate DateTime?
+  lastPaymentDate DateTime?
+  
+  status          String   @default("active") // active, paused, cancelled
+  
+  // Prediction confidence
+  confidence      String   @default("medium") // high, medium, low
+  autoDetected    Boolean  @default(false)
+  
+  notes           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([companyId, status])
+  @@index([companyId, nextPaymentDate])
+  @@map("recurring_expenses")
+}
+
+model RevenueRecognition {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId         String   @db.ObjectId
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Source
+  sourceType        String   // invoice, subscription, contract, milestone
+  sourceId          String   @db.ObjectId
+  
+  // Recognition Schedule
+  totalAmount       Float
+  recognizedAmount  Float    @default(0)
+  deferredAmount    Float
+  
+  recognitionPeriods Json[]  // [{period: '2024-01', amount: 5000, recognized: true, recognizedAt}]
+  
+  // Method
+  method            String   // straight_line, completed_contract, percentage_completion
+  
+  startDate         DateTime
+  endDate           DateTime
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([companyId, sourceType, sourceId])
+  @@map("revenue_recognitions")
+}
+
+model CustomerCredit {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId       String   @db.ObjectId
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  customerId      String
+  customerName    String
+  customerEmail   String?
+  
+  creditLimit     Float
+  usedCredit      Float    @default(0)
+  availableCredit Float
+  
+  paymentTerms    String   @default("net30") // net15, net30, net45, net60
+  
+  // Aging Analysis
+  current         Float    @default(0) // 0-30 days
+  days30_60       Float    @default(0)
+  days60_90       Float    @default(0)
+  over90          Float    @default(0)
+  
+  totalOutstanding Float   @default(0)
+  
+  // Risk Management
+  riskRating      String   @default("low") // low, medium, high, critical
+  creditHold      Boolean  @default(false)
+  creditHoldReason String?
+  
+  // History
+  totalInvoiced   Float    @default(0)
+  totalCollected  Float    @default(0)
+  avgPaymentDays  Float?
+  
+  lastReviewDate  DateTime?
+  lastPaymentDate DateTime?
+  
+  notes           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([companyId, customerId])
+  @@index([companyId, riskRating])
+  @@map("customer_credits")
+}
+
+// ============ Workflow Automation ============
+
+model Workflow {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  
+  // Trigger
+  trigger     Json     // {event: 'transaction.created', conditions: {...}}
+  
+  // Actions
+  actions     Json[]   // [{type: 'send_email', config: {...}}, {type: 'create_approval', config: {...}}]
+  
+  isActive    Boolean  @default(true)
+  
+  // Stats
+  executionCount Int   @default(0)
+  lastExecutedAt DateTime?
+  
+  createdBy   String   @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId, isActive])
+  @@map("workflows")
+}
+
+model WorkflowExecution {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  workflowId  String   @db.ObjectId
+  companyId   String   @db.ObjectId
+  
+  status      String   // success, failed, partial
+  
+  trigger     Json     // Trigger data
+  results     Json[]   // Results of each action
+  
+  error       String?
+  
+  executedAt  DateTime @default(now())
+  
+  @@index([workflowId, executedAt])
+  @@map("workflow_executions")
+}
+
+// ============ Custom Dashboards ============
+
+model Dashboard {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  
+  userId      String   @db.ObjectId // Owner
+  layout      Json     // Grid layout configuration
+  widgets     Json[]   // Widget configurations
+  
+  isPublic    Boolean  @default(false)
+  isDefault   Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([companyId, userId])
+  @@map("dashboards")
+}
+
+// ============ Document Management ============
+
+model Document {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  type        String   // invoice, bill, contract, receipt, statement, other
+  filename    String
+  url         String   // S3/Cloudinary URL
+  size        Int      // File size in bytes
+  mimeType    String
+  
+  // Linking
+  entityType  String?
+  entityId    String?  @db.ObjectId
+  
+  // Metadata
+  tags        String[]
+  ocrData     Json?    // Extracted data from OCR
+  
+  // Expiry (for contracts, licenses)
+  expiryDate  DateTime?
+  
+  // Access
+  isPublic    Boolean  @default(false)
+  shareToken  String?  // For secure sharing
+  
+  uploadedBy  String   @db.ObjectId
+  uploadedAt  DateTime @default(now())
+  
+  @@index([companyId, type])
+  @@index([entityType, entityId])
+  @@map("documents")
+}
+
+model BankAccount {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId     String   @db.ObjectId
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  accountName   String
+  bankName      String
+  accountNumber String
+  ifscCode      String
+  accountType   String   @default("savings") // savings, current, overdraft
+  balance       Float    @default(0)
+  isActive      Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([companyId, isActive])
+  @@map("bank_accounts")
+}

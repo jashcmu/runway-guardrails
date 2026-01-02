@@ -1,0 +1,63 @@
+Date,Description,Debit,Credit,Balance
+2024-12-01,Opening Balance,0,0,1000000
+2024-12-01,Payment from Acme Corp - Invoice Payment,0,125000,1125000
+2024-12-02,AWS Cloud Services - Monthly Subscription,15000,0,1110000
+2024-12-02,Google Workspace - Team Subscription,8500,0,1101500
+2024-12-03,Salary - Engineering Team December,450000,0,651500
+2024-12-03,Salary - Sales Team December,180000,0,471500
+2024-12-03,Salary - Operations Team December,120000,0,351500
+2024-12-04,Office Rent - December Payment,85000,0,266500
+2024-12-04,Electricity Bill - Office,12500,0,254000
+2024-12-05,Internet & Phone Bills,6500,0,247500
+2024-12-05,Payment from Global Industries Ltd,0,250000,497500
+2024-12-06,NEFT to TechVendor - Software License,45000,0,452500
+2024-12-06,Payment to CloudHost - Hosting Services,18000,0,434500
+2024-12-07,Google Ads Campaign - December,35000,0,399500
+2024-12-07,Facebook Ads - Marketing Campaign,22000,0,377500
+2024-12-08,LinkedIn Premium - Corporate,15000,0,362500
+2024-12-09,Payment from StartupXYZ - Consulting Fees,0,95000,457500
+2024-12-09,Uber for Business - Team Travel,8500,0,449000
+2024-12-10,Flight Tickets - Client Meeting Mumbai,45000,0,404000
+2024-12-10,Hotel Booking - Client Meeting,18000,0,386000
+2024-12-11,Legal Fees - Contract Review,75000,0,311000
+2024-12-11,CA Fees - Tax Advisory,35000,0,276000
+2024-12-12,Payment from Enterprise Solutions Inc,0,180000,456000
+2024-12-12,Office Supplies - Stationery & Equipment,12000,0,444000
+2024-12-13,Slack Premium - Annual Subscription,25000,0,419000
+2024-12-13,Zoom Enterprise - Annual Plan,18000,0,401000
+2024-12-14,GitHub Enterprise - Team Plan,12000,0,389000
+2024-12-14,Dropbox Business - Storage,8500,0,380500
+2024-12-15,Payment from TechCorp Global,0,320000,700500
+2024-12-15,Insurance Premium - Office & Equipment,45000,0,655500
+2024-12-16,GST Payment - November Return,125000,0,530500
+2024-12-16,TDS Payment - Professional Services,35000,0,495500
+2024-12-17,Payment to DesignStudio - UI/UX Work,65000,0,430500
+2024-12-17,Payment to ContentAgency - Marketing Content,28000,0,402500
+2024-12-18,Microsoft Azure - Cloud Computing,32000,0,370500
+2024-12-18,Payment from Innovate Industries,0,145000,515500
+2024-12-19,Cleaning & Maintenance Services,8500,0,507000
+2024-12-19,Security Services - Monthly,15000,0,492000
+2024-12-20,Employee Health Insurance Premium,85000,0,407000
+2024-12-20,Team Building Event - Year End Party,45000,0,362000
+2024-12-21,Payment from Digital Dynamics Ltd,0,210000,572000
+2024-12-21,Laptop Purchase - New Employees,180000,0,392000
+2024-12-22,Software Licenses - Adobe Creative Cloud,35000,0,357000
+2024-12-22,Figma Professional - Design Team,18000,0,339000
+2024-12-23,Payment from SmartTech Solutions,0,175000,514000
+2024-12-23,Courier & Logistics Services,6500,0,507500
+2024-12-24,Office Furniture - New Workstations,95000,0,412500
+2024-12-24,Pantry Supplies - Monthly,12000,0,400500
+2024-12-26,Payment from GlobalRetail Corp,0,280000,680500
+2024-12-26,Bank Charges - Transaction Fees,2500,0,678000
+2024-12-27,Postpaid Mobile Bills - Team,25000,0,653000
+2024-12-27,Domain Renewals - Company Websites,8500,0,644500
+2024-12-28,Payment from NextGen Enterprises,0,155000,799500
+2024-12-28,Accounting Software - Subscription,15000,0,784500
+2024-12-29,CRM Software - Monthly Subscription,22000,0,762500
+2024-12-29,Project Management Tools - Jira,12000,0,750500
+2024-12-30,Payment from FutureTech Inc,0,190000,940500
+2024-12-30,Consultant Fee - Business Strategy,125000,0,815500
+2024-12-31,Petty Cash Withdrawal,15000,0,800500
+2024-12-31,Year End Bonus - Performance Awards,150000,0,650500
+
+
