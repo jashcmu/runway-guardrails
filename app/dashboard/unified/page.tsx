@@ -22,6 +22,12 @@ export default function UnifiedDashboard() {
     activeVendors: 0,
     activeCustomers: 0
   });
+  const [runwayData, setRunwayData] = useState({
+    runway: null as number | null,
+    cashBalance: 0,
+    monthlyBurn: 0,
+    targetMonths: null as number | null
+  });
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -39,6 +45,18 @@ export default function UnifiedDashboard() {
         if (statsRes.ok) {
           const statsData = await statsRes.json();
           setStats(statsData);
+        }
+        
+        // Fetch runway data
+        const dashboardRes = await fetch(`/api/dashboard?companyId=${meData.companyId}`);
+        if (dashboardRes.ok) {
+          const dashboardData = await dashboardRes.json();
+          setRunwayData({
+            runway: dashboardData.runway || null,
+            cashBalance: dashboardData.cashBalance || 0,
+            monthlyBurn: dashboardData.monthlyBurn || 0,
+            targetMonths: dashboardData.targetMonths || null
+          });
         }
       } catch (error) {
         console.error('Error fetching dashboard:', error);
@@ -172,7 +190,12 @@ export default function UnifiedDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Runway Widget - Spans 2 columns */}
           <div className="lg:col-span-2">
-            <RunwayWidget companyId={companyId} />
+            <RunwayWidget 
+              runway={runwayData.runway}
+              cashBalance={runwayData.cashBalance}
+              monthlyBurn={runwayData.monthlyBurn}
+              targetMonths={runwayData.targetMonths}
+            />
           </div>
 
           {/* Financial Health */}

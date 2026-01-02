@@ -160,7 +160,7 @@ export async function processBankStatement(
           txn.debit,
           category,
           historicalTransactions.map(t => ({
-            description: t.description,
+            description: t.description || '',
             amount: Math.abs(t.amount),
             date: t.date,
             category: t.category
@@ -172,7 +172,7 @@ export async function processBankStatement(
           txn.description,
           txn.debit,
           historicalTransactions.map(t => ({
-            description: t.description,
+            description: t.description || '',
             amount: Math.abs(t.amount),
             date: t.date,
             category: t.category

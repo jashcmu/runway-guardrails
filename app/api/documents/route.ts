@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
     });
 
     // Calculate storage stats
-    const totalSize = documents.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+    const totalSize = documents.reduce((sum, doc) => sum + (doc.size || 0), 0);
     const categoryBreakdown = documents.reduce((acc: any, doc) => {
-      acc[doc.category] = (acc[doc.category] || 0) + 1;
+      acc[doc.type] = (acc[doc.type] || 0) + 1;
       return acc;
     }, {});
 
@@ -79,18 +79,15 @@ export async function POST(req: NextRequest) {
     const document = await prisma.document.create({
       data: {
         companyId,
-        fileName,
-        fileUrl,
-        fileSize: fileSize || 0,
-        fileType: fileType || 'application/pdf',
-        category: category || 'other',
+        filename: fileName,
+        url: fileUrl,
+        size: fileSize || 0,
+        mimeType: fileType || 'application/pdf',
+        type: category || 'other',
         entityType,
         entityId,
         tags: tags || [],
-        description,
         uploadedBy,
-        version: 1,
-        status: 'active'
       }
     });
 
@@ -152,14 +149,12 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Company ID and search term required' }, { status: 400 });
     }
 
-    // Search in fileName, description, and tags
+    // Search in filename and tags
     const documents = await prisma.document.findMany({
       where: {
         companyId,
-        status: 'active',
         OR: [
-          { fileName: { contains: searchTerm, mode: 'insensitive' } },
-          { description: { contains: searchTerm, mode: 'insensitive' } },
+          { filename: { contains: searchTerm, mode: 'insensitive' } },
           { tags: { hasSome: [searchTerm] } }
         ]
       },

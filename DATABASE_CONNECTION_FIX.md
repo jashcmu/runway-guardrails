@@ -272,3 +272,4 @@ Navigate to http://localhost:3000/register to create your account!
 3. Create new Atlas cluster (fresh start)
 
 
+

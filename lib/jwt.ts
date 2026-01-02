@@ -13,7 +13,7 @@ export interface JWTPayload {
  * Create a JWT token
  */
 export function createToken(payload: JWTPayload): string {
-  const options: SignOptions = { expiresIn: JWT_EXPIRES_IN }
+  const options: SignOptions = { expiresIn: JWT_EXPIRES_IN as any }
   return jwt.sign(payload, JWT_SECRET, options)
 }
 

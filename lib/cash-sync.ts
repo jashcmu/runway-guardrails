@@ -27,7 +27,7 @@ export async function updateCashOnBillPaid(
     where: { id: billId },
     data: {
       paymentStatus: 'paid',
-      paidDate: new Date(),
+      paymentDate: new Date(),
       paidAmount: amount,
       balanceAmount: 0,
     },
@@ -38,7 +38,7 @@ export async function updateCashOnBillPaid(
     data: {
       companyId,
       amount: -amount,
-      category: 'Expense',
+      category: 'G_A',
       description: `Bill payment - ${billId}`,
       date: new Date(),
       currency: 'INR',
@@ -87,7 +87,7 @@ export async function updateCashOnInvoicePaid(
     data: {
       companyId,
       amount: amount,
-      category: 'Revenue',
+      category: 'Marketing', // Note: Revenue transactions should use Revenue model, not Transaction
       description: `Invoice payment received - ${invoiceId}`,
       date: new Date(),
       currency: 'INR',

@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
       items,
       totalQuantity,
       notes,
-      receivedBy
+      receivedBy,
+      receivedByName
     } = body;
 
     // Validation
@@ -67,15 +68,14 @@ export async function POST(req: NextRequest) {
       data: {
         companyId,
         grnNumber,
-        purchaseOrderId,
-        vendorId: vendorId || po.vendorId,
-        vendorName: vendorName || po.vendorName,
+        purchaseOrderId: purchaseOrderId || undefined,
+        poNumber: po?.poNumber,
+        vendorName: vendorName || po?.vendorName || '',
         receivedDate: new Date(receivedDate || Date.now()),
         items,
-        totalQuantity: totalQuantity || items.reduce((sum: number, item: any) => sum + (item.receivedQuantity || 0), 0),
-        status: 'draft',
-        notes,
-        receivedBy
+        receivedBy,
+        receivedByName: receivedByName || 'User',
+        inspectionNotes: notes,
       }
     });
 

@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
     const subscription = await prisma.subscription.create({
       data: {
         companyId,
+        name: customerName || planName || 'Subscription',
         customerId,
         customerName,
         customerEmail,
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
         startDate: start,
         status: 'active',
         nextBillingDate: nextBilling,
-        lastBillingDate: start,
+        lastBilledDate: start,
         autoRenew: autoRenew !== false
       }
     });
@@ -211,7 +212,7 @@ export async function PUT(req: NextRequest) {
       await prisma.subscription.update({
         where: { id: subscription.id },
         data: {
-          lastBillingDate: subscription.nextBillingDate,
+          lastBilledDate: subscription.nextBillingDate,
           nextBillingDate: nextBilling
         }
       });

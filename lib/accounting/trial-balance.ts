@@ -30,7 +30,7 @@ export async function calculateTrialBalance(companyId: string, asOfDate?: Date):
   const effectiveDate = asOfDate || new Date()
 
   // Get all accounts
-  const accounts = await prisma.account.findMany({
+  const accounts = await prisma.accountingAccount.findMany({
     where: { companyId },
     orderBy: { accountCode: 'asc' },
   })
@@ -141,7 +141,7 @@ export async function validateBooksBalance(companyId: string): Promise<{ isBalan
  * Get account balances by type
  */
 export async function getAccountBalancesByType(companyId: string) {
-  const accounts = await prisma.account.findMany({
+  const accounts = await prisma.accountingAccount.findMany({
     where: { companyId },
   })
 

@@ -81,14 +81,11 @@ export async function POST(req: NextRequest) {
       data: {
         companyId,
         batchNumber: batchNumber || `BATCH-${Date.now()}`,
-        batchName: batchName || `Payment Batch ${new Date().toLocaleDateString()}`,
-        paymentDate: new Date(paymentDate || Date.now()),
+        batchDate: new Date(paymentDate || Date.now()),
         paymentMethod: paymentMethod || 'bank_transfer',
         totalAmount,
-        billCount,
-        processedCount: 0,
-        failedCount: 0,
-        status: 'pending',
+        paymentsCount: billCount,
+        status: 'draft',
         payments: paymentEntries,
         notes,
         createdBy

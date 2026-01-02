@@ -466,7 +466,7 @@ export async function initializeChartOfAccounts(companyId: string): Promise<void
   console.log(`\n📊 Initializing Chart of Accounts for company ${companyId}...`)
   
   // Check if already initialized
-  const existingAccounts = await prisma.account.count({
+  const existingAccounts = await prisma.accountingAccount.count({
     where: { companyId },
   })
 
@@ -478,7 +478,7 @@ export async function initializeChartOfAccounts(companyId: string): Promise<void
   // Create all default accounts
   const accountsCreated = []
   for (const template of DEFAULT_CHART_OF_ACCOUNTS) {
-    const account = await prisma.account.create({
+    const account = await prisma.accountingAccount.create({
       data: {
         companyId,
         ...template,
@@ -500,12 +500,10 @@ export async function initializeChartOfAccounts(companyId: string): Promise<void
  * Get account by code
  */
 export async function getAccountByCode(companyId: string, accountCode: string) {
-  return await prisma.account.findUnique({
+  return await prisma.accountingAccount.findFirst({
     where: {
-      companyId_accountCode: {
-        companyId,
-        accountCode,
-      },
+      companyId,
+      accountCode,
     },
   })
 }
@@ -514,7 +512,7 @@ export async function getAccountByCode(companyId: string, accountCode: string) {
  * Get accounts by type
  */
 export async function getAccountsByType(companyId: string, type: string) {
-  return await prisma.account.findMany({
+  return await prisma.accountingAccount.findMany({
     where: {
       companyId,
       type,
@@ -528,7 +526,7 @@ export async function getAccountsByType(companyId: string, type: string) {
  * Get all accounts for a company
  */
 export async function getAllAccounts(companyId: string) {
-  return await prisma.account.findMany({
+  return await prisma.accountingAccount.findMany({
     where: { companyId },
     orderBy: { accountCode: 'asc' },
   })

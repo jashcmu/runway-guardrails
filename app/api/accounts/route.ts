@@ -68,12 +68,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if account code already exists
-    const existing = await prisma.account.findUnique({
+    const existing = await prisma.accountingAccount.findFirst({
       where: {
-        companyId_accountCode: {
-          companyId,
-          accountCode,
-        },
+        companyId,
+        accountCode,
       },
     })
 
@@ -85,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create account
-    const account = await prisma.account.create({
+    const account = await prisma.accountingAccount.create({
       data: {
         companyId,
         accountCode,

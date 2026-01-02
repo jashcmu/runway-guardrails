@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useTheme } from '@/components/theme-provider'
 
 type NavItem = {
@@ -119,7 +119,7 @@ const navigation: NavItem[] = [
   { name: 'Settings', href: '/dashboard/settings', icon: <SettingsIcon /> },
 ]
 
-export default function Navigation() {
+function NavigationContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -228,5 +228,13 @@ export default function Navigation() {
         </div>
       </div>
     </nav>
+  )
+}
+
+export default function Navigation() {
+  return (
+    <Suspense fallback={<div className="h-14" />}>
+      <NavigationContent />
+    </Suspense>
   )
 }

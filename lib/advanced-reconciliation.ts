@@ -8,7 +8,7 @@ import { prisma } from './prisma'
 export interface BankTransaction {
   date: Date
   amount: number
-  description: string
+  description: string | null
   reference?: string
 }
 
@@ -16,8 +16,8 @@ export interface BookTransaction {
   id: string
   date: Date
   amount: number
-  description: string
-  vendorName?: string
+  description: string | null
+  vendorName?: string | null
 }
 
 export interface MatchResult {
@@ -144,7 +144,7 @@ function findExactMatch(
 
     // Description similarity > 90%
     const similarity = calculateSimilarity(
-      bankTxn.description,
+      bankTxn.description || '',
       bookTxn.description || bookTxn.vendorName || ''
     )
     if (similarity >= 0.9) {
@@ -183,7 +183,7 @@ function findFuzzyMatch(
 
     // Description similarity
     const similarity = calculateSimilarity(
-      bankTxn.description,
+      bankTxn.description || '',
       bookTxn.description || bookTxn.vendorName || ''
     )
 
@@ -208,7 +208,7 @@ function findMLMatch(
   const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
 
   // Extract vendor name from bank description
-  const vendorKeywords = extractVendorKeywords(bankTxn.description)
+  const vendorKeywords = extractVendorKeywords(bankTxn.description || '')
 
   for (const bookTxn of bookTxns) {
     if (excludeIds.has(bookTxn.id)) continue

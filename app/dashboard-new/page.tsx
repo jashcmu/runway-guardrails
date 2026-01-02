@@ -146,15 +146,7 @@ export default function ModernDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Navigation */}
-      <Navigation
-        user={user}
-        selectedCompany={selectedCompany}
-        onCompanyChange={(slug) => {
-          const company = user?.companies.find(c => c.slug === slug)
-          if (company) setSelectedCompany(company)
-        }}
-        onLogout={handleLogout}
-      />
+      <Navigation />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -221,8 +213,7 @@ export default function ModernDashboard() {
           {transactions.length > 0 ? (
             <ExpenseTable
               transactions={transactions.slice(0, 10)}
-              onEdit={() => fetchTransactions()}
-              onDelete={() => fetchTransactions()}
+              onUpdate={() => fetchTransactions()}
             />
           ) : (
             <div className="text-center py-12">

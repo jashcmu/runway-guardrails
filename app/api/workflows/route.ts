@@ -57,11 +57,8 @@ export async function POST(req: NextRequest) {
         companyId,
         name,
         description,
-        entityType,
-        triggerConditions: triggerConditions || {},
-        approvalSteps,
-        autoApprovalRules: autoApprovalRules || {},
-        notificationSettings: notificationSettings || {},
+        trigger: triggerConditions || {},
+        actions: approvalSteps || [],
         isActive: true,
         createdBy
       }
@@ -117,7 +114,6 @@ export async function PUT(req: NextRequest) {
     const workflows = await prisma.workflow.findMany({
       where: {
         companyId,
-        entityType,
         isActive: true
       }
     });
@@ -131,7 +127,7 @@ export async function PUT(req: NextRequest) {
 
     // Check trigger conditions
     const matchingWorkflow = workflows.find(workflow => {
-      const conditions = workflow.triggerConditions as any;
+      const conditions = workflow.trigger as any;
       
       // Amount-based triggers
       if (conditions.minAmount && entityData.amount < conditions.minAmount) {
@@ -165,18 +161,18 @@ export async function PUT(req: NextRequest) {
       });
     }
 
-    // Check auto-approval rules
-    const autoApprovalRules = matchingWorkflow.autoApprovalRules as any;
+    // Check auto-approval rules (check in trigger conditions)
+    const triggerConditions = matchingWorkflow.trigger as any;
     let autoApproved = false;
 
-    if (autoApprovalRules.enabled) {
+    if (triggerConditions?.autoApprove) {
       // Auto-approve if amount is below threshold
-      if (autoApprovalRules.maxAmount && entityData.amount <= autoApprovalRules.maxAmount) {
+      if (triggerConditions.maxAmount && entityData.amount <= triggerConditions.maxAmount) {
         autoApproved = true;
       }
 
       // Auto-approve if submitter is in approved list
-      if (autoApprovalRules.approvedUsers && autoApprovalRules.approvedUsers.includes(userId)) {
+      if (triggerConditions.approvedUsers && triggerConditions.approvedUsers.includes(userId)) {
         autoApproved = true;
       }
     }
@@ -190,7 +186,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Create approval request
-    const approvalSteps = matchingWorkflow.approvalSteps as any[];
+    const approvalSteps = matchingWorkflow.actions as any[];
     const pendingApprovals = approvalSteps.map((step: any, index: number) => ({
       stepNumber: index + 1,
       approverRole: step.role,

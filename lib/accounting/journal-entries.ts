@@ -64,12 +64,10 @@ export async function createJournalEntries(input: JournalEntryInput): Promise<Jo
 
   // Get account IDs from codes
   const accountPromises = entries.map((entry) =>
-    prisma.account.findUnique({
+    prisma.accountingAccount.findFirst({
       where: {
-        companyId_accountCode: {
-          companyId,
-          accountCode: entry.accountCode,
-        },
+        companyId,
+        accountCode: entry.accountCode,
       },
     })
   )
@@ -126,7 +124,7 @@ export async function createJournalEntries(input: JournalEntryInput): Promise<Jo
           balanceChange = creditAmount - debitAmount
         }
 
-        await tx.account.update({
+        await tx.accountingAccount.update({
           where: { id: account.id },
           data: { balance: { increment: balanceChange } },
         })

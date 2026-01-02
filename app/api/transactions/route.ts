@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       transaction.id,
       transaction.amount,
       finalCategory,
-      description,
+      description || '',
       new Date(date),
       transaction.gstAmount || undefined
     )

@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
           transaction.id,
           transaction.amount,
           transaction.category,
-          transaction.description,
+          transaction.description || '',
           transaction.date,
           transaction.gstAmount || undefined
         )

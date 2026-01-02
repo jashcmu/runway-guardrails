@@ -83,7 +83,7 @@ export async function syncBankStatement(
             transaction.id,
             transaction.amount,
             category,
-            expense.description,
+            expense.description || '',
             expense.date,
             transaction.gstAmount || undefined
           )

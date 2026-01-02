@@ -44,6 +44,15 @@ export async function POST(request: NextRequest) {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/e4cba6fa-1e69-44bb-92a8-89250ff265b5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login/route.ts:38',message:'User found',data:{userId:user.id,hasPassword:!!user.password},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H11'})}).catch(()=>{});
     // #endregion
+    
+    // Check if user has a password (OAuth-only users don't have passwords)
+    if (!user.password) {
+      return NextResponse.json(
+        { error: 'This account uses OAuth login. Please sign in with Google.' },
+        { status: 401 }
+      )
+    }
+    
     // Verify password
     const isPasswordValid = await verifyPassword(password, user.password)
     // #region agent log

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,24 +12,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Company ID required' }, { status: 400 });
     }
 
+    // Using Alert model instead of Notification (which doesn't exist in schema)
     const where: any = { companyId };
-    if (userId) {
-      where.recipientId = userId;
-    }
     if (unreadOnly) {
       where.isRead = false;
     }
 
-    const notifications = await prisma.notification.findMany({
+    const notifications = await prisma.alert.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 50
     });
 
-    const unreadCount = await prisma.notification.count({
+    const unreadCount = await prisma.alert.count({
       where: {
         companyId,
-        recipientId: userId,
         isRead: false
       }
     });
@@ -51,34 +46,29 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       companyId,
-      recipientId,
-      type,
-      title,
       message,
-      entityType,
-      entityId,
-      actionUrl,
-      priority
+      severity,
+      riskLevel,
+      category,
+      threshold
     } = body;
 
     // Validation
-    if (!companyId || !type || !title || !message) {
+    if (!companyId || !message) {
       return NextResponse.json({ 
         error: 'Missing required fields' 
       }, { status: 400 });
     }
 
-    const notification = await prisma.notification.create({
+    // Using Alert model instead of Notification
+    const notification = await prisma.alert.create({
       data: {
         companyId,
-        recipientId,
-        type,
-        title,
         message,
-        entityType,
-        entityId,
-        actionUrl,
-        priority: priority || 'normal',
+        severity: severity || 'info',
+        riskLevel,
+        category,
+        threshold,
         isRead: false
       }
     });
@@ -103,17 +93,17 @@ export async function PATCH(req: NextRequest) {
 
     switch (action) {
       case 'mark_read':
-        updateData = { isRead: true, readAt: new Date() };
+        updateData = { isRead: true };
         break;
       case 'mark_unread':
-        updateData = { isRead: false, readAt: null };
+        updateData = { isRead: false };
         break;
       case 'delete':
         if (notificationId) {
-          await prisma.notification.delete({ where: { id: notificationId } });
+          await prisma.alert.delete({ where: { id: notificationId } });
           return NextResponse.json({ message: 'Notification deleted' });
         } else if (notificationIds) {
-          await prisma.notification.deleteMany({ where: { id: { in: notificationIds } } });
+          await prisma.alert.deleteMany({ where: { id: { in: notificationIds } } });
           return NextResponse.json({ message: 'Notifications deleted' });
         }
         return NextResponse.json({ error: 'Notification ID required' }, { status: 400 });
@@ -122,13 +112,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (notificationId) {
-      const notification = await prisma.notification.update({
+      const notification = await prisma.alert.update({
         where: { id: notificationId },
         data: updateData
       });
       return NextResponse.json({ notification });
     } else if (notificationIds) {
-      await prisma.notification.updateMany({
+      await prisma.alert.updateMany({
         where: { id: { in: notificationIds } },
         data: updateData
       });
@@ -146,21 +136,19 @@ export async function PATCH(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { companyId, userId } = body;
+    const { companyId } = body;
 
-    if (!companyId || !userId) {
-      return NextResponse.json({ error: 'Company ID and User ID required' }, { status: 400 });
+    if (!companyId) {
+      return NextResponse.json({ error: 'Company ID required' }, { status: 400 });
     }
 
-    await prisma.notification.updateMany({
+    await prisma.alert.updateMany({
       where: {
         companyId,
-        recipientId: userId,
         isRead: false
       },
       data: {
-        isRead: true,
-        readAt: new Date()
+        isRead: true
       }
     });
 

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     }
 
     // Find company by public slug
-    const company = await prisma.company.findUnique({
+    const company = await prisma.company.findFirst({
       where: { publicSlug: slug },
       include: {
         transactions: {
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
 
     // If enabling, ensure public slug is available
     if (isPublic && publicSlug) {
-      const existing = await prisma.company.findUnique({
+      const existing = await prisma.company.findFirst({
         where: { publicSlug },
       })
 

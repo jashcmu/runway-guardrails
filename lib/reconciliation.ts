@@ -189,7 +189,7 @@ export async function reconcileBankStatement(
       type: txn.type,
     }))
   } else {
-    const parsed = parsePDFStatement(statementData)
+    const parsed = await parsePDFStatement(Buffer.from(statementData))
     bankTransactions = parsed.map((txn) => ({
       date: txn.date,
       description: txn.description,

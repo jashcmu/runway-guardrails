@@ -114,3 +114,4 @@ C:\Users\Jash Gandhi\.env  ❌ (wrong location)
 
 
 
+

@@ -167,7 +167,6 @@ export async function PATCH(req: NextRequest) {
             balanceAmount: Math.max(0, balanceAmount),
             paymentStatus,
             paymentDate: balanceAmount <= 0 ? new Date() : bill.paymentDate,
-            paidDate: balanceAmount <= 0 ? new Date() : null,
             paymentMethod: paymentMethod || bill.paymentMethod,
             paymentReference: paymentReference || bill.paymentReference,
             status: balanceAmount <= 0 ? 'paid' : bill.status,
