@@ -18,21 +18,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'companyId is required' }, { status: 400 })
     }
 
-    // Only process CSV for now
-    if (!file.name.endsWith('.csv')) {
+    const fileName = file.name.toLowerCase()
+    const isCSV = fileName.endsWith('.csv')
+    const isPDF = fileName.endsWith('.pdf')
+
+    if (!isCSV && !isPDF) {
       return NextResponse.json({ 
-        error: 'Please upload CSV file. PDF support coming soon.',
-        hint: 'Export your bank statement as CSV from your bank portal'
+        error: 'Unsupported file format. Please upload CSV or PDF file.',
+        hint: 'Accepted formats: .csv, .pdf'
       }, { status: 400 })
     }
 
-    const text = await file.text()
+    console.log(`📊 Processing ${isCSV ? 'CSV' : 'PDF'} file: ${file.name}`)
+
+    let text = ''
+    
+    if (isCSV) {
+      text = await file.text()
+    }
     
     // Detect CSV format by checking first line
-    const firstLine = text.split('\n')[0].toLowerCase()
+    const firstLine = isCSV ? text.split('\n')[0].toLowerCase() : ''
     const isComprehensiveFormat = firstLine.includes('record_type')
-    
-    console.log(`📊 Processing ${isComprehensiveFormat ? 'comprehensive' : 'bank statement'} import...`)
     
     if (isComprehensiveFormat) {
       // Use comprehensive import parser for multi-record format
@@ -62,8 +69,10 @@ export async function POST(request: NextRequest) {
         },
       }, { status: 200 })
     } else {
-      // Use bank statement parser for traditional format
-      const result = await processBankStatement(text, companyId, bankAccountId)
+      // Use bank statement parser for CSV or PDF
+      const result = isCSV 
+        ? await processBankStatement(text, companyId, bankAccountId)
+        : await processBankStatement(await file.arrayBuffer().then(buf => Buffer.from(buf)), companyId, bankAccountId, true)
       
       console.log(`✅ Bank statement processed successfully:
         - Transactions: ${result.newTransactions}
@@ -75,7 +84,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Bank statement processed successfully! All transactions auto-categorized.',
+        message: `${isCSV ? 'CSV' : 'PDF'} bank statement processed successfully! All transactions auto-categorized.`,
         summary: {
           transactionsCreated: result.newTransactions,
           billsMarkedPaid: result.billsPaid,

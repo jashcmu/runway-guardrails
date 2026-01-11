@@ -1,9 +1,15 @@
-// Enhanced Bank Statement Processor with Full Integration
+// Enhanced Bank Statement Processor with Multi-Layer Classification
 import { PrismaClient, Category } from '@prisma/client'
-import Papa from 'papaparse'
 import { classifyExpense, detectSubscription } from './smart-expense-classifier'
+import { classifyTransaction, ClassificationResult } from './transaction-classifier'
+import { matchTransaction, reconcileInvoice, reconcileBill } from './matching-engine'
+import { extractEntities } from './entity-extractor'
+import { checkForDuplicates } from './duplicate-detector'
 
 const prisma = new PrismaClient()
+
+// Confidence threshold for auto-approval
+const REVIEW_THRESHOLD = 70
 
 type BankTransaction = {
   date: string
@@ -18,32 +24,67 @@ type MatchedTransaction = {
   matchType: 'bill' | 'invoice' | 'expense' | 'revenue' | 'unmatched'
   matchedId?: string
   category?: Category
+  confidenceScore?: number
+  needsReview?: boolean
+  classification?: ClassificationResult
 }
 
-export async function processBankStatement(
-  fileContent: string,
-  companyId: string,
-  bankAccountId?: string
-): Promise<{
+type ProcessingResult = {
   transactions: MatchedTransaction[]
   cashBalanceChange: number
   newCashBalance: number
   billsPaid: number
   invoicesPaid: number
   newTransactions: number
-}> {
-  // Parse CSV
-  const parsedData = Papa.parse(fileContent, {
-    header: true,
-    skipEmptyLines: true,
-  }) as Papa.ParseResult<any>
+  needsReviewCount: number
+  duplicatesSkipped: number
+  averageConfidence: number
+}
 
-  const transactions: BankTransaction[] = parsedData.data.map((row: any) => ({
-    date: row.Date || row.date,
-    description: row.Description || row.description || row.Narration,
-    debit: parseFloat(row.Debit || row.debit || row['Withdrawal Amt.'] || '0'),
-    credit: parseFloat(row.Credit || row.credit || row['Deposit Amt.'] || '0'),
-    balance: parseFloat(row.Balance || row.balance || '0'),
+export async function processBankStatement(
+  fileContent: string | Buffer,
+  companyId: string,
+  bankAccountId?: string,
+  isPDF = false
+): Promise<ProcessingResult> {
+  let rawTransactions: Array<{date: Date, description: string, debit: number, credit: number, balance?: number}>
+  
+  if (isPDF) {
+    // Parse PDF using bank-parser
+    const { parsePDFStatement } = await import('./bank-parser')
+    const pdfBuffer = fileContent as Buffer
+    const parsed = await parsePDFStatement(pdfBuffer)
+    
+    rawTransactions = parsed.map(t => ({
+      date: t.date,
+      description: t.description,
+      debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
+      credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
+      balance: t.balance,
+    }))
+  } else {
+    // Parse CSV using bank-parser
+    const { parseCSVStatement } = await import('./bank-parser')
+    const csvText = fileContent as string
+    const parsed = parseCSVStatement(csvText)
+    
+    rawTransactions = parsed.map(t => ({
+      date: t.date,
+      description: t.description,
+      debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
+      credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
+      balance: t.balance,
+    }))
+  }
+
+  console.log(`📊 Parsed ${rawTransactions.length} transactions from ${isPDF ? 'PDF' : 'CSV'}`)
+
+  const transactions: BankTransaction[] = rawTransactions.map(t => ({
+    date: t.date.toISOString(),
+    description: t.description,
+    debit: t.debit,
+    credit: t.credit,
+    balance: t.balance || 0,
   }))
 
   const matched: MatchedTransaction[] = []
@@ -51,179 +92,216 @@ export async function processBankStatement(
   let billsPaid = 0
   let invoicesPaid = 0
   let newTxCount = 0
-
-  // Get existing bills and invoices
-  const pendingBills = await prisma.bill.findMany({
-    where: { companyId, paymentStatus: { in: ['unpaid', 'partial'] } },
-  })
-
-  const pendingInvoices = await prisma.invoice.findMany({
-    where: { companyId, status: { in: ['draft', 'sent'] } },
-  })
+  let needsReviewCount = 0
+  let duplicatesSkipped = 0
+  let totalConfidence = 0
 
   for (const txn of transactions) {
-    // Skip opening balance rows (description contains "opening balance" and both debit/credit are 0)
+    // Skip rows with missing or invalid data
+    if (!txn.date || !txn.description) {
+      console.log(`⏭️  Skipping row with missing data: date=${txn.date}, desc=${txn.description}`)
+      continue
+    }
+    
+    // Skip opening balance rows
     if (
       txn.description.toLowerCase().includes('opening balance') ||
+      txn.description.toLowerCase().includes('closing balance') ||
       (txn.debit === 0 && txn.credit === 0)
     ) {
-      console.log(`⏭️  Skipping opening balance row: ${txn.description}`)
+      console.log(`⏭️  Skipping balance row: ${txn.description}`)
+      continue
+    }
+    
+    // Skip if both debit and credit are zero (invalid transaction)
+    if (txn.debit === 0 && txn.credit === 0) {
+      console.log(`⏭️  Skipping zero transaction: ${txn.description}`)
       continue
     }
 
     const amount = txn.credit > 0 ? txn.credit : -txn.debit
+    const txnType = txn.credit > 0 ? 'credit' : 'debit'
+    
+    console.log(`Processing: ${txn.date} | ${txn.description} | Debit: ${txn.debit} | Credit: ${txn.credit} | Amount: ${amount}`)
+
+    // Parse date from ISO string
+    const parsedDate = new Date(txn.date)
+    
+    if (isNaN(parsedDate.getTime())) {
+      console.warn(`⚠️ Invalid date: ${txn.date}, skipping transaction`)
+      continue
+    }
+
+    // Check for duplicates
+    const isDuplicate = await checkForDuplicates({
+      description: txn.description,
+      amount: Math.abs(amount),
+      date: parsedDate,
+      companyId
+    })
+
+    if (isDuplicate.isDuplicate) {
+      console.log(`⚠️ Skipping duplicate transaction: ${txn.description} (matched ${isDuplicate.matchedTransactionId})`)
+      duplicatesSkipped++
+      continue
+    }
+
+    // Use multi-layer classification
+    const classification = await classifyTransaction({
+      description: txn.description,
+      amount: Math.abs(amount),
+      date: parsedDate,
+      type: txnType,
+      companyId
+    })
+
+    // Extract entities for additional context
+    const entities = extractEntities(txn.description)
+
+    // Determine if needs review
+    const needsReview = classification.needsReview || classification.confidence < REVIEW_THRESHOLD
+
     let matchedItem: MatchedTransaction = {
       transaction: txn,
       matchType: 'unmatched',
+      confidenceScore: classification.confidence,
+      needsReview,
+      classification
     }
 
-    if (txn.credit > 0) {
-      // Incoming money (REVENUE) - This is SETTLED CASH, not AR
-      // Try to match with existing invoices for reconciliation
-      const matchedInvoice = pendingInvoices.find((inv) =>
-        Math.abs(inv.totalAmount - txn.credit) < 1 || // Amount match
-        txn.description.toLowerCase().includes(inv.customerName.toLowerCase()) ||
-        txn.description.includes(inv.invoiceNumber)
+    // Process based on classification type
+    if (classification.type === 'invoice_payment' && classification.matchedInvoiceId) {
+      // Invoice payment detected
+      const result = await reconcileInvoice(
+        classification.matchedInvoiceId,
+        txn.credit,
+        parsedDate
       )
-
-      if (matchedInvoice) {
-        // Mark invoice as paid (reconciliation)
-        await prisma.invoice.update({
-          where: { id: matchedInvoice.id },
-          data: {
-            status: 'paid',
-            paidDate: new Date(txn.date),
-            paidAmount: txn.credit,
-            balanceAmount: 0,
-          },
-        })
-
-        matchedItem = {
-          ...matchedItem,
-          matchType: 'invoice',
-          matchedId: matchedInvoice.id,
-          category: Category.G_A,
-        }
+      
+      if (result.success) {
+        matchedItem.matchType = 'invoice'
+        matchedItem.matchedId = classification.matchedInvoiceId
+        matchedItem.category = classification.category
         invoicesPaid++
-        console.log(`✅ Matched invoice ${matchedInvoice.invoiceNumber} as paid`)
-      } else {
-        // No invoice match - just revenue (settled cash)
-        matchedItem.matchType = 'revenue'
-        matchedItem.category = Category.G_A
-        console.log(`💰 Revenue: ${txn.description} - ₹${txn.credit} (no invoice match)`)
+        console.log(`✅ Matched invoice payment (${classification.confidence}% confidence)`)
       }
-      
       cashChange += txn.credit
-    } else if (txn.debit > 0) {
-      // Outgoing money (EXPENSE) - This is SETTLED CASH, not AP
-      // Try to match with existing bills for reconciliation
-      const matchedBill = pendingBills.find((bill) =>
-        Math.abs(bill.totalAmount - txn.debit) < 1 || // Amount match
-        txn.description.toLowerCase().includes(bill.vendorName.toLowerCase()) ||
-        txn.description.includes(bill.billNumber)
+    } else if (classification.type === 'bill_payment' && classification.matchedBillId) {
+      // Bill payment detected
+      const result = await reconcileBill(
+        classification.matchedBillId,
+        txn.debit,
+        parsedDate
       )
-
-      if (matchedBill) {
-        // Mark bill as paid (reconciliation)
-        await prisma.bill.update({
-          where: { id: matchedBill.id },
-          data: {
-            paymentStatus: 'paid',
-            paymentDate: new Date(txn.date),
-            paidAmount: txn.debit,
-            balanceAmount: 0,
-          },
-        })
-
-        matchedItem = {
-          ...matchedItem,
-          matchType: 'bill',
-          matchedId: matchedBill.id,
-          category: Category.G_A,
-        }
+      
+      if (result.success) {
+        matchedItem.matchType = 'bill'
+        matchedItem.matchedId = classification.matchedBillId
+        matchedItem.category = classification.category
         billsPaid++
-        console.log(`✅ Matched bill ${matchedBill.billNumber} as paid`)
-      } else {
-        // No bill match - just expense (settled cash)
-        const category = autoCategorizeExpense(txn.description)
-        
-        // Get historical transactions for smart classification
-        const historicalTransactions = await prisma.transaction.findMany({
-          where: { companyId },
-          orderBy: { date: 'desc' },
-          take: 100,
-        })
-        
-        // Classify if recurring or one-time
-        const classification = classifyExpense(
-          txn.description,
-          txn.debit,
-          category,
-          historicalTransactions.map(t => ({
-            description: t.description || '',
-            amount: Math.abs(t.amount),
-            date: t.date,
-            category: t.category
-          }))
-        )
-        
-        // Check if it's a subscription
-        const subscriptionInfo = detectSubscription(
-          txn.description,
-          txn.debit,
-          historicalTransactions.map(t => ({
-            description: t.description || '',
-            amount: Math.abs(t.amount),
-            date: t.date,
-            category: t.category
-          }))
-        )
-        
-        // Create subscription record if detected
-        if (subscriptionInfo.isSubscription && subscriptionInfo.confidence !== 'low') {
-          await createOrUpdateSubscription(
-            companyId,
-            subscriptionInfo.subscriptionName,
-            txn.debit,
-            subscriptionInfo.billingCycle,
-            new Date(txn.date)
-          )
-          console.log(`🔄 Detected subscription: ${subscriptionInfo.subscriptionName} (${subscriptionInfo.billingCycle})`)
-        }
-        
-        // Create recurring expense if detected
-        if (classification.expenseType === 'recurring' && classification.confidence !== 'low') {
-          await createOrUpdateRecurringExpense(
-            companyId,
-            txn.description,
-            txn.debit,
-            category,
-            classification.frequency || 'monthly',
-            new Date(txn.date)
-          )
-          console.log(`🔁 Detected recurring expense: ${txn.description} (${classification.frequency})`)
-        }
+        console.log(`✅ Matched bill payment (${classification.confidence}% confidence)`)
+      }
+      cashChange -= txn.debit
+    } else if (txn.credit > 0) {
+      // Revenue (no invoice match)
+      matchedItem.matchType = 'revenue'
+      matchedItem.category = classification.category
+      cashChange += txn.credit
+      console.log(`💰 Revenue: ${txn.description} - ₹${txn.credit} (${classification.confidence}% confidence)`)
+    } else if (txn.debit > 0) {
+      // Expense (no bill match)
+      matchedItem.matchType = 'expense'
+      matchedItem.category = classification.category
 
-        matchedItem.matchType = 'expense'
-        matchedItem.category = category
-        console.log(`💸 Expense: ${txn.description} - ₹${txn.debit} [${classification.expenseType}] (no bill match)`)
+      // Get historical transactions for smart classification (legacy support)
+      const historicalTransactions = await prisma.transaction.findMany({
+        where: { companyId },
+        orderBy: { date: 'desc' },
+        take: 100,
+      })
+      
+      // Classify if recurring or one-time using legacy system
+      const legacyClassification = classifyExpense(
+        txn.description,
+        txn.debit,
+        classification.category,
+        historicalTransactions.map(t => ({
+          description: t.description || '',
+          amount: Math.abs(t.amount),
+          date: t.date,
+          category: t.category
+        }))
+      )
+      
+      // Check if it's a subscription
+      const subscriptionInfo = detectSubscription(
+        txn.description,
+        txn.debit,
+        historicalTransactions.map(t => ({
+          description: t.description || '',
+          amount: Math.abs(t.amount),
+          date: t.date,
+          category: t.category
+        }))
+      )
+      
+      // Create subscription record if detected
+      if (subscriptionInfo.isSubscription && subscriptionInfo.confidence !== 'low') {
+        await createOrUpdateSubscription(
+          companyId,
+          subscriptionInfo.subscriptionName,
+          txn.debit,
+          subscriptionInfo.billingCycle,
+          parsedDate
+        )
+        console.log(`🔄 Detected subscription: ${subscriptionInfo.subscriptionName} (${subscriptionInfo.billingCycle})`)
       }
       
+      // Create recurring expense if detected
+      if (classification.expenseType === 'recurring' || (legacyClassification.expenseType === 'recurring' && legacyClassification.confidence !== 'low')) {
+        await createOrUpdateRecurringExpense(
+          companyId,
+          txn.description,
+          txn.debit,
+          classification.category,
+          classification.frequency || legacyClassification.frequency || 'monthly',
+          parsedDate
+        )
+        console.log(`🔁 Detected recurring expense: ${txn.description} (${classification.frequency || legacyClassification.frequency})`)
+      }
+
       cashChange -= txn.debit
+      console.log(`💸 Expense: ${txn.description} - ₹${txn.debit} [${classification.expenseType}] (${classification.confidence}% confidence)`)
     }
 
-    // Create transaction record
+    // Create transaction record with classification metadata
     await prisma.transaction.create({
       data: {
         companyId,
         amount: amount,
         category: matchedItem.category || Category.G_A,
         description: txn.description,
-        date: new Date(txn.date),
+        date: parsedDate,
         currency: 'INR',
+        expenseType: classification.expenseType,
+        frequency: classification.frequency,
+        vendorName: classification.vendorName || entities.vendor,
+        isAutoDetected: true,
+        // Review queue fields
+        needsReview: needsReview,
+        reviewReason: needsReview ? (classification.confidence < REVIEW_THRESHOLD ? 'low_confidence' : 'unclear_description') : null,
+        confidenceScore: classification.confidence,
+        transactionType: classification.type,
+        matchedInvoiceId: classification.matchedInvoiceId,
+        matchedBillId: classification.matchedBillId,
+        classificationReasoning: JSON.stringify(classification.reasoning),
       },
     })
 
+    if (needsReview) {
+      needsReviewCount++
+    }
+    totalConfidence += classification.confidence
     newTxCount++
     matched.push(matchedItem)
   }
@@ -234,9 +312,6 @@ export async function processBankStatement(
   })
 
   const oldCashBalance = company?.cashBalance || 0
-  
-  // Calculate new balance by ADDING the net change to existing balance
-  // This way we preserve the initial balance entered during onboarding
   const newCashBalance = oldCashBalance + cashChange
 
   await prisma.company.update({
@@ -249,6 +324,16 @@ export async function processBankStatement(
   // Recalculate runway
   await recalculateRunway(companyId, newCashBalance)
 
+  const averageConfidence = newTxCount > 0 ? totalConfidence / newTxCount : 0
+
+  console.log(`📊 Processing Summary:`)
+  console.log(`   - New transactions: ${newTxCount}`)
+  console.log(`   - Bills paid: ${billsPaid}`)
+  console.log(`   - Invoices paid: ${invoicesPaid}`)
+  console.log(`   - Needs review: ${needsReviewCount}`)
+  console.log(`   - Duplicates skipped: ${duplicatesSkipped}`)
+  console.log(`   - Average confidence: ${averageConfidence.toFixed(1)}%`)
+
   return {
     transactions: matched,
     cashBalanceChange: cashChange,
@@ -256,6 +341,9 @@ export async function processBankStatement(
     billsPaid,
     invoicesPaid,
     newTransactions: newTxCount,
+    needsReviewCount,
+    duplicatesSkipped,
+    averageConfidence,
   }
 }
 

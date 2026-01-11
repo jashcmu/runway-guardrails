@@ -92,6 +92,20 @@ model Transaction {
   approvedAt     DateTime? // When approved
   status         String    @default("approved") // pending, approved, rejected
   
+  // Review Queue fields (for classification accuracy)
+  needsReview      Boolean   @default(false)
+  reviewReason     String?   // "low_confidence", "unclear_description", "no_match", "multiple_matches"
+  reviewedBy       String?   @db.ObjectId
+  reviewedAt       DateTime?
+  reviewNotes      String?
+  confidenceScore  Float?    // 0-100 confidence from classifier
+  
+  // Matching fields
+  matchedInvoiceId String?   @db.ObjectId
+  matchedBillId    String?   @db.ObjectId
+  transactionType  String?   // "invoice_payment", "bill_payment", "expense", "revenue", "transfer"
+  classificationReasoning String? // JSON array of reasons for classification
+  
   gstRate        Int?      @default(0)
   gstAmount      Float?
   cgst           Float?
@@ -105,6 +119,8 @@ model Transaction {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  @@index([companyId, needsReview])
+  @@index([companyId, confidenceScore])
   @@map("transactions")
 }
 
