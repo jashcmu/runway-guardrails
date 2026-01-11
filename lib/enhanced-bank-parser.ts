@@ -47,11 +47,13 @@ export async function processBankStatement(
   bankAccountId?: string,
   isPDF = false
 ): Promise<ProcessingResult> {
+  console.log(`\n🚀 Processing ${isPDF ? 'PDF' : 'CSV'} bank statement for company ${companyId}`)
+  
   let rawTransactions: Array<{date: Date, description: string, debit: number, credit: number, balance?: number}>
   
   if (isPDF) {
-    // Parse PDF using bank-parser
-    const { parsePDFStatement } = await import('./bank-parser')
+    // Parse PDF
+    const { parsePDFStatement } = await import('./simple-bank-parser')
     const pdfBuffer = fileContent as Buffer
     const parsed = await parsePDFStatement(pdfBuffer)
     
@@ -63,8 +65,8 @@ export async function processBankStatement(
       balance: t.balance,
     }))
   } else {
-    // Parse CSV using bank-parser
-    const { parseCSVStatement } = await import('./bank-parser')
+    // Parse CSV
+    const { parseCSVStatement } = await import('./simple-bank-parser')
     const csvText = fileContent as string
     const parsed = parseCSVStatement(csvText)
     
@@ -77,7 +79,7 @@ export async function processBankStatement(
     }))
   }
 
-  console.log(`📊 Parsed ${rawTransactions.length} transactions from ${isPDF ? 'PDF' : 'CSV'}`)
+  console.log(`✅ Parser returned ${rawTransactions.length} raw transactions`)
 
   const transactions: BankTransaction[] = rawTransactions.map(t => ({
     date: t.date.toISOString(),
@@ -86,6 +88,8 @@ export async function processBankStatement(
     credit: t.credit,
     balance: t.balance || 0,
   }))
+  
+  console.log(`✅ Converted to ${transactions.length} BankTransaction objects`)
 
   const matched: MatchedTransaction[] = []
   let cashChange = 0
@@ -97,38 +101,22 @@ export async function processBankStatement(
   let totalConfidence = 0
 
   for (const txn of transactions) {
-    // Skip rows with missing or invalid data
-    if (!txn.date || !txn.description) {
-      console.log(`⏭️  Skipping row with missing data: date=${txn.date}, desc=${txn.description}`)
+    // Skip invalid rows
+    if (!txn.date || !txn.description || (txn.debit === 0 && txn.credit === 0)) {
       continue
     }
     
-    // Skip opening balance rows
-    if (
-      txn.description.toLowerCase().includes('opening balance') ||
-      txn.description.toLowerCase().includes('closing balance') ||
-      (txn.debit === 0 && txn.credit === 0)
-    ) {
-      console.log(`⏭️  Skipping balance row: ${txn.description}`)
-      continue
-    }
-    
-    // Skip if both debit and credit are zero (invalid transaction)
-    if (txn.debit === 0 && txn.credit === 0) {
-      console.log(`⏭️  Skipping zero transaction: ${txn.description}`)
+    // Skip balance rows
+    const descLower = txn.description.toLowerCase()
+    if (descLower.includes('opening balance') || descLower.includes('closing balance')) {
       continue
     }
 
     const amount = txn.credit > 0 ? txn.credit : -txn.debit
     const txnType = txn.credit > 0 ? 'credit' : 'debit'
     
-    console.log(`Processing: ${txn.date} | ${txn.description} | Debit: ${txn.debit} | Credit: ${txn.credit} | Amount: ${amount}`)
-
-    // Parse date from ISO string
     const parsedDate = new Date(txn.date)
-    
     if (isNaN(parsedDate.getTime())) {
-      console.warn(`⚠️ Invalid date: ${txn.date}, skipping transaction`)
       continue
     }
 
@@ -141,7 +129,6 @@ export async function processBankStatement(
     })
 
     if (isDuplicate.isDuplicate) {
-      console.log(`⚠️ Skipping duplicate transaction: ${txn.description} (matched ${isDuplicate.matchedTransactionId})`)
       duplicatesSkipped++
       continue
     }
@@ -183,11 +170,9 @@ export async function processBankStatement(
         matchedItem.matchedId = classification.matchedInvoiceId
         matchedItem.category = classification.category
         invoicesPaid++
-        console.log(`✅ Matched invoice payment (${classification.confidence}% confidence)`)
       }
       cashChange += txn.credit
     } else if (classification.type === 'bill_payment' && classification.matchedBillId) {
-      // Bill payment detected
       const result = await reconcileBill(
         classification.matchedBillId,
         txn.debit,
@@ -199,17 +184,13 @@ export async function processBankStatement(
         matchedItem.matchedId = classification.matchedBillId
         matchedItem.category = classification.category
         billsPaid++
-        console.log(`✅ Matched bill payment (${classification.confidence}% confidence)`)
       }
       cashChange -= txn.debit
     } else if (txn.credit > 0) {
-      // Revenue (no invoice match)
       matchedItem.matchType = 'revenue'
       matchedItem.category = classification.category
       cashChange += txn.credit
-      console.log(`💰 Revenue: ${txn.description} - ₹${txn.credit} (${classification.confidence}% confidence)`)
     } else if (txn.debit > 0) {
-      // Expense (no bill match)
       matchedItem.matchType = 'expense'
       matchedItem.category = classification.category
 
@@ -254,7 +235,6 @@ export async function processBankStatement(
           subscriptionInfo.billingCycle,
           parsedDate
         )
-        console.log(`🔄 Detected subscription: ${subscriptionInfo.subscriptionName} (${subscriptionInfo.billingCycle})`)
       }
       
       // Create recurring expense if detected
@@ -267,11 +247,9 @@ export async function processBankStatement(
           classification.frequency || legacyClassification.frequency || 'monthly',
           parsedDate
         )
-        console.log(`🔁 Detected recurring expense: ${txn.description} (${classification.frequency || legacyClassification.frequency})`)
       }
 
       cashChange -= txn.debit
-      console.log(`💸 Expense: ${txn.description} - ₹${txn.debit} [${classification.expenseType}] (${classification.confidence}% confidence)`)
     }
 
     // Create transaction record with classification metadata
@@ -326,13 +304,14 @@ export async function processBankStatement(
 
   const averageConfidence = newTxCount > 0 ? totalConfidence / newTxCount : 0
 
-  console.log(`📊 Processing Summary:`)
-  console.log(`   - New transactions: ${newTxCount}`)
-  console.log(`   - Bills paid: ${billsPaid}`)
-  console.log(`   - Invoices paid: ${invoicesPaid}`)
-  console.log(`   - Needs review: ${needsReviewCount}`)
-  console.log(`   - Duplicates skipped: ${duplicatesSkipped}`)
-  console.log(`   - Average confidence: ${averageConfidence.toFixed(1)}%`)
+  console.log(`\n✅ Processing Complete:`)
+  console.log(`   Transactions: ${newTxCount}`)
+  console.log(`   Bills Paid: ${billsPaid}`)
+  console.log(`   Invoices Paid: ${invoicesPaid}`)
+  console.log(`   Needs Review: ${needsReviewCount}`)
+  console.log(`   Duplicates Skipped: ${duplicatesSkipped}`)
+  console.log(`   Cash Change: ₹${cashChange}`)
+  console.log(`   New Balance: ₹${newCashBalance}\n`)
 
   return {
     transactions: matched,

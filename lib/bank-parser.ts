@@ -202,7 +202,8 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
       if (
         descLower.includes('opening balance') ||
         descLower.includes('closing balance') ||
-        descLower.includes('total')
+        descLower === 'total' ||
+        descLower === 'totals'
       ) {
         console.log(`✗ Skipping balance row: ${description}`)
         continue
