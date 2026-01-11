@@ -101,187 +101,229 @@ export async function processBankStatement(
   let totalConfidence = 0
 
   for (const txn of transactions) {
-    // Skip invalid rows
-    if (!txn.date || !txn.description || (txn.debit === 0 && txn.credit === 0)) {
-      continue
-    }
-    
-    // Skip balance rows
-    const descLower = txn.description.toLowerCase()
-    if (descLower.includes('opening balance') || descLower.includes('closing balance')) {
-      continue
-    }
-
-    const amount = txn.credit > 0 ? txn.credit : -txn.debit
-    const txnType = txn.credit > 0 ? 'credit' : 'debit'
-    
-    const parsedDate = new Date(txn.date)
-    if (isNaN(parsedDate.getTime())) {
-      continue
-    }
-
-    // Check for duplicates
-    const isDuplicate = await checkForDuplicates({
-      description: txn.description,
-      amount: Math.abs(amount),
-      date: parsedDate,
-      companyId
-    })
-
-    if (isDuplicate.isDuplicate) {
-      duplicatesSkipped++
-      continue
-    }
-
-    // Use multi-layer classification
-    const classification = await classifyTransaction({
-      description: txn.description,
-      amount: Math.abs(amount),
-      date: parsedDate,
-      type: txnType,
-      companyId
-    })
-
-    // Extract entities for additional context
-    const entities = extractEntities(txn.description)
-
-    // Determine if needs review
-    const needsReview = classification.needsReview || classification.confidence < REVIEW_THRESHOLD
-
-    let matchedItem: MatchedTransaction = {
-      transaction: txn,
-      matchType: 'unmatched',
-      confidenceScore: classification.confidence,
-      needsReview,
-      classification
-    }
-
-    // Process based on classification type
-    if (classification.type === 'invoice_payment' && classification.matchedInvoiceId) {
-      // Invoice payment detected
-      const result = await reconcileInvoice(
-        classification.matchedInvoiceId,
-        txn.credit,
-        parsedDate
-      )
-      
-      if (result.success) {
-        matchedItem.matchType = 'invoice'
-        matchedItem.matchedId = classification.matchedInvoiceId
-        matchedItem.category = classification.category
-        invoicesPaid++
-      }
-      cashChange += txn.credit
-    } else if (classification.type === 'bill_payment' && classification.matchedBillId) {
-      const result = await reconcileBill(
-        classification.matchedBillId,
-        txn.debit,
-        parsedDate
-      )
-      
-      if (result.success) {
-        matchedItem.matchType = 'bill'
-        matchedItem.matchedId = classification.matchedBillId
-        matchedItem.category = classification.category
-        billsPaid++
-      }
-      cashChange -= txn.debit
-    } else if (txn.credit > 0) {
-      matchedItem.matchType = 'revenue'
-      matchedItem.category = classification.category
-      cashChange += txn.credit
-    } else if (txn.debit > 0) {
-      matchedItem.matchType = 'expense'
-      matchedItem.category = classification.category
-
-      // Get historical transactions for smart classification (legacy support)
-      const historicalTransactions = await prisma.transaction.findMany({
-        where: { companyId },
-        orderBy: { date: 'desc' },
-        take: 100,
-      })
-      
-      // Classify if recurring or one-time using legacy system
-      const legacyClassification = classifyExpense(
-        txn.description,
-        txn.debit,
-        classification.category,
-        historicalTransactions.map(t => ({
-          description: t.description || '',
-          amount: Math.abs(t.amount),
-          date: t.date,
-          category: t.category
-        }))
-      )
-      
-      // Check if it's a subscription
-      const subscriptionInfo = detectSubscription(
-        txn.description,
-        txn.debit,
-        historicalTransactions.map(t => ({
-          description: t.description || '',
-          amount: Math.abs(t.amount),
-          date: t.date,
-          category: t.category
-        }))
-      )
-      
-      // Create subscription record if detected
-      if (subscriptionInfo.isSubscription && subscriptionInfo.confidence !== 'low') {
-        await createOrUpdateSubscription(
-          companyId,
-          subscriptionInfo.subscriptionName,
-          txn.debit,
-          subscriptionInfo.billingCycle,
-          parsedDate
-        )
+    try {
+      // Skip invalid rows
+      if (!txn.date || !txn.description || (txn.debit === 0 && txn.credit === 0)) {
+        console.log(`⏭️ Skipping invalid row: ${JSON.stringify(txn).substring(0, 100)}`)
+        continue
       }
       
-      // Create recurring expense if detected
-      if (classification.expenseType === 'recurring' || (legacyClassification.expenseType === 'recurring' && legacyClassification.confidence !== 'low')) {
-        await createOrUpdateRecurringExpense(
-          companyId,
-          txn.description,
-          txn.debit,
-          classification.category,
-          classification.frequency || legacyClassification.frequency || 'monthly',
-          parsedDate
-        )
+      // Skip balance rows
+      const descLower = txn.description.toLowerCase()
+      if (descLower.includes('opening balance') || descLower.includes('closing balance')) {
+        console.log(`⏭️ Skipping balance row: ${txn.description}`)
+        continue
       }
 
-      cashChange -= txn.debit
-    }
+      const amount = txn.credit > 0 ? txn.credit : -txn.debit
+      const txnType = txn.credit > 0 ? 'credit' : 'debit'
+      
+      const parsedDate = new Date(txn.date)
+      if (isNaN(parsedDate.getTime())) {
+        console.log(`⏭️ Invalid date: ${txn.date}`)
+        continue
+      }
 
-    // Create transaction record with classification metadata
-    await prisma.transaction.create({
-      data: {
-        companyId,
-        amount: amount,
-        category: matchedItem.category || Category.G_A,
-        description: txn.description,
-        date: parsedDate,
-        currency: 'INR',
-        expenseType: classification.expenseType,
-        frequency: classification.frequency,
-        vendorName: classification.vendorName || entities.vendor,
-        isAutoDetected: true,
-        // Review queue fields
-        needsReview: needsReview,
-        reviewReason: needsReview ? (classification.confidence < REVIEW_THRESHOLD ? 'low_confidence' : 'unclear_description') : null,
+      // Check for duplicates (with error handling)
+      let isDuplicateTxn = false
+      try {
+        const isDuplicate = await checkForDuplicates({
+          description: txn.description,
+          amount: Math.abs(amount),
+          date: parsedDate,
+          companyId
+        })
+        isDuplicateTxn = isDuplicate.isDuplicate
+      } catch (dupError) {
+        console.warn(`⚠️ Duplicate check failed (continuing): ${dupError}`)
+      }
+
+      if (isDuplicateTxn) {
+        duplicatesSkipped++
+        continue
+      }
+
+      // Classify transaction (with error handling)
+      let classification: ClassificationResult
+      try {
+        classification = await classifyTransaction({
+          description: txn.description,
+          amount: Math.abs(amount),
+          date: parsedDate,
+          type: txnType,
+          companyId
+        })
+      } catch (classifyError) {
+        console.warn(`⚠️ Classification failed (using defaults): ${classifyError}`)
+        // Use default classification
+        classification = {
+          category: txn.credit > 0 ? Category.G_A : autoCategorizeExpense(txn.description),
+          confidence: 50,
+          needsReview: true,
+          type: txn.credit > 0 ? 'revenue' : 'expense',
+          expenseType: 'one-time',
+          reasoning: ['Default classification due to error']
+        }
+      }
+
+      // Extract entities (with error handling)
+      let vendorName = ''
+      try {
+        const entities = extractEntities(txn.description)
+        vendorName = entities.vendor || ''
+      } catch (entityError) {
+        console.warn(`⚠️ Entity extraction failed: ${entityError}`)
+      }
+
+      const needsReview = classification.needsReview || classification.confidence < REVIEW_THRESHOLD
+
+      let matchedItem: MatchedTransaction = {
+        transaction: txn,
+        matchType: 'unmatched',
         confidenceScore: classification.confidence,
-        transactionType: classification.type,
-        matchedInvoiceId: classification.matchedInvoiceId,
-        matchedBillId: classification.matchedBillId,
-        classificationReasoning: JSON.stringify(classification.reasoning),
-      },
-    })
+        needsReview,
+        classification
+      }
 
-    if (needsReview) {
-      needsReviewCount++
+      // Process based on type
+      if (classification.type === 'invoice_payment' && classification.matchedInvoiceId) {
+        try {
+          const result = await reconcileInvoice(
+            classification.matchedInvoiceId,
+            txn.credit,
+            parsedDate
+          )
+          if (result.success) {
+            matchedItem.matchType = 'invoice'
+            matchedItem.matchedId = classification.matchedInvoiceId
+            matchedItem.category = classification.category
+            invoicesPaid++
+          }
+        } catch (e) {
+          console.warn(`⚠️ Invoice reconciliation failed: ${e}`)
+        }
+        cashChange += txn.credit
+      } else if (classification.type === 'bill_payment' && classification.matchedBillId) {
+        try {
+          const result = await reconcileBill(
+            classification.matchedBillId,
+            txn.debit,
+            parsedDate
+          )
+          if (result.success) {
+            matchedItem.matchType = 'bill'
+            matchedItem.matchedId = classification.matchedBillId
+            matchedItem.category = classification.category
+            billsPaid++
+          }
+        } catch (e) {
+          console.warn(`⚠️ Bill reconciliation failed: ${e}`)
+        }
+        cashChange -= txn.debit
+      } else if (txn.credit > 0) {
+        matchedItem.matchType = 'revenue'
+        matchedItem.category = classification.category
+        cashChange += txn.credit
+      } else if (txn.debit > 0) {
+        matchedItem.matchType = 'expense'
+        matchedItem.category = classification.category
+        cashChange -= txn.debit
+        
+        // Try to detect subscriptions and recurring expenses (non-blocking)
+        try {
+          const historicalTransactions = await prisma.transaction.findMany({
+            where: { companyId },
+            orderBy: { date: 'desc' },
+            take: 50,
+          })
+          
+          const legacyClassification = classifyExpense(
+            txn.description,
+            txn.debit,
+            classification.category,
+            historicalTransactions.map(t => ({
+              description: t.description || '',
+              amount: Math.abs(t.amount),
+              date: t.date,
+              category: t.category
+            }))
+          )
+          
+          const subscriptionInfo = detectSubscription(
+            txn.description,
+            txn.debit,
+            historicalTransactions.map(t => ({
+              description: t.description || '',
+              amount: Math.abs(t.amount),
+              date: t.date,
+              category: t.category
+            }))
+          )
+          
+          if (subscriptionInfo.isSubscription && subscriptionInfo.confidence !== 'low') {
+            await createOrUpdateSubscription(
+              companyId,
+              subscriptionInfo.subscriptionName,
+              txn.debit,
+              subscriptionInfo.billingCycle,
+              parsedDate
+            )
+          }
+          
+          if (classification.expenseType === 'recurring' || 
+              (legacyClassification.expenseType === 'recurring' && legacyClassification.confidence !== 'low')) {
+            await createOrUpdateRecurringExpense(
+              companyId,
+              txn.description,
+              txn.debit,
+              classification.category,
+              classification.frequency || legacyClassification.frequency || 'monthly',
+              parsedDate
+            )
+          }
+        } catch (recurringError) {
+          console.warn(`⚠️ Recurring detection failed: ${recurringError}`)
+        }
+      }
+
+      // Create transaction record with classification metadata
+      console.log(`💾 Creating transaction: ${txn.description.substring(0, 40)} | ${amount}`)
+      
+      await prisma.transaction.create({
+        data: {
+          companyId,
+          amount: amount,
+          category: matchedItem.category || Category.G_A,
+          description: txn.description,
+          date: parsedDate,
+          currency: 'INR',
+          expenseType: classification.expenseType || 'one-time',
+          frequency: classification.frequency,
+          vendorName: classification.vendorName || vendorName,
+          isAutoDetected: true,
+          needsReview: needsReview,
+          reviewReason: needsReview ? (classification.confidence < REVIEW_THRESHOLD ? 'low_confidence' : 'unclear_description') : null,
+          confidenceScore: classification.confidence,
+          transactionType: classification.type,
+          matchedInvoiceId: classification.matchedInvoiceId,
+          matchedBillId: classification.matchedBillId,
+          classificationReasoning: JSON.stringify(classification.reasoning || []),
+        },
+      })
+
+      if (needsReview) {
+        needsReviewCount++
+      }
+      totalConfidence += classification.confidence
+      newTxCount++
+      matched.push(matchedItem)
+      
+      console.log(`✅ Transaction created successfully: ${txn.description.substring(0, 30)}`)
+      
+    } catch (txnError) {
+      console.error(`❌ Failed to process transaction: ${txn.description}`, txnError)
+      // Continue to next transaction even if this one fails
     }
-    totalConfidence += classification.confidence
-    newTxCount++
-    matched.push(matchedItem)
   }
 
   // Update company cash balance
