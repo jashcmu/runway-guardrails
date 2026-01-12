@@ -174,41 +174,63 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
   for (let i = 0; i < result.data.length; i++) {
     const row = result.data[i] as Record<string, unknown>
     
+    console.error(`\n📋 Row ${i}: Raw row data:`, JSON.stringify(row).substring(0, 200))
+    
     // Get date
     const dateValue = dateCol ? String(row[dateCol] || '').trim() : ''
+    console.error(`   Date column "${dateCol}": "${dateValue}"`)
     const date = parseDate(dateValue)
     
     if (!date) {
-      console.log(`⏭️ Row ${i}: Invalid date "${dateValue}"`)
+      console.error(`⏭️ Row ${i}: Invalid date "${dateValue}"`)
       continue
     }
 
     // Get description
     let description = descCol ? String(row[descCol] || '').trim() : ''
-    if (!description) description = 'Transaction'
+    console.error(`   Description column "${descCol}": "${description}"`)
+    if (!description) {
+      // Try to find description in any column
+      for (const key of headers) {
+        const val = String(row[key] || '').trim()
+        if (val && val.length > 5 && !val.match(/^[\d,.\-₹\s]+$/)) {
+          description = val
+          console.error(`   Found description in column "${key}": "${description}"`)
+          break
+        }
+      }
+      if (!description) description = 'Transaction'
+    }
 
-    // Skip balance/total rows
-    const descLower = description.toLowerCase()
-    if (descLower.includes('opening balance') || 
-        descLower.includes('closing balance') || 
-        descLower === 'total' ||
-        descLower === 'totals') {
-      console.log(`⏭️ Row ${i}: Skipping balance row "${description}"`)
+    // Skip ONLY actual balance/total rows (exact matches or starts with)
+    const descLower = description.toLowerCase().trim()
+    const isOpeningBalance = descLower === 'opening balance' || descLower.startsWith('opening balance')
+    const isClosingBalance = descLower === 'closing balance' || descLower.startsWith('closing balance')
+    const isTotal = descLower === 'total' || descLower === 'totals' || descLower.startsWith('total ')
+    
+    if (isOpeningBalance || isClosingBalance || isTotal) {
+      console.error(`⏭️ Row ${i}: Skipping balance/total row "${description}"`)
       continue
     }
+    
+    console.error(`✅ Row ${i}: Processing "${description.substring(0, 40)}"`)
 
     // Get amounts
     let debit = 0
     let credit = 0
     
     if (debitCol) {
-      const val = String(row[debitCol] || '').replace(/[,₹\s]/g, '')
+      const rawVal = String(row[debitCol] || '')
+      const val = rawVal.replace(/[,₹\s]/g, '')
       debit = Math.abs(parseFloat(val) || 0)
+      console.error(`   Debit column "${debitCol}": raw="${rawVal}", parsed=${debit}`)
     }
     
     if (creditCol) {
-      const val = String(row[creditCol] || '').replace(/[,₹\s]/g, '')
+      const rawVal = String(row[creditCol] || '')
+      const val = rawVal.replace(/[,₹\s]/g, '')
       credit = Math.abs(parseFloat(val) || 0)
+      console.error(`   Credit column "${creditCol}": raw="${rawVal}", parsed=${credit}`)
     }
 
     // If using single amount column

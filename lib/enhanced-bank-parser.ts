@@ -143,12 +143,18 @@ export async function processBankStatement(
         continue
       }
       
-      // Skip balance rows
-      const descLower = txn.description.toLowerCase()
-      if (descLower.includes('opening balance') || descLower.includes('closing balance')) {
-        console.log(`⏭️ Skipping balance row: ${txn.description}`)
+      // Skip ONLY actual balance rows (exact matches or starts with)
+      const descLower = txn.description.toLowerCase().trim()
+      const isOpeningBalance = descLower === 'opening balance' || descLower.startsWith('opening balance')
+      const isClosingBalance = descLower === 'closing balance' || descLower.startsWith('closing balance')
+      
+      if (isOpeningBalance || isClosingBalance) {
+        console.error(`⏭️ Skipping balance row: ${txn.description}`)
         continue
       }
+      
+      // Log what we're processing
+      console.error(`✅ Processing transaction: ${txn.description.substring(0, 50)} | Debit: ${txn.debit} | Credit: ${txn.credit}`)
 
       const amount = txn.credit > 0 ? txn.credit : -txn.debit
       const txnType = txn.credit > 0 ? 'credit' : 'debit'
