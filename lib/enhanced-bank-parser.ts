@@ -47,39 +47,59 @@ export async function processBankStatement(
   bankAccountId?: string,
   isPDF = false
 ): Promise<ProcessingResult> {
-  console.log(`\n🚀 Processing ${isPDF ? 'PDF' : 'CSV'} bank statement for company ${companyId}`)
+  console.log(`\n🚀 ========== PROCESSING BANK STATEMENT ==========`)
+  console.log(`   Type: ${isPDF ? 'PDF' : 'CSV'}`)
+  console.log(`   Company ID: ${companyId}`)
+  console.log(`   Input type: ${typeof fileContent}`)
+  console.log(`   Input length: ${isPDF ? (fileContent as Buffer).length : (fileContent as string).length}`)
   
   let rawTransactions: Array<{date: Date, description: string, debit: number, credit: number, balance?: number}>
   
-  if (isPDF) {
-    // Parse PDF
-    const { parsePDFStatement } = await import('./simple-bank-parser')
-    const pdfBuffer = fileContent as Buffer
-    const parsed = await parsePDFStatement(pdfBuffer)
-    
-    rawTransactions = parsed.map(t => ({
-      date: t.date,
-      description: t.description,
-      debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
-      credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
-      balance: t.balance,
-    }))
-  } else {
-    // Parse CSV
-    const { parseCSVStatement } = await import('./simple-bank-parser')
-    const csvText = fileContent as string
-    const parsed = parseCSVStatement(csvText)
-    
-    rawTransactions = parsed.map(t => ({
-      date: t.date,
-      description: t.description,
-      debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
-      credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
-      balance: t.balance,
-    }))
+  try {
+    if (isPDF) {
+      console.log(`📄 Parsing PDF...`)
+      const { parsePDFStatement } = await import('./simple-bank-parser')
+      const pdfBuffer = fileContent as Buffer
+      const parsed = await parsePDFStatement(pdfBuffer)
+      console.log(`📄 PDF parser returned ${parsed.length} transactions`)
+      
+      rawTransactions = parsed.map(t => ({
+        date: t.date,
+        description: t.description,
+        debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
+        credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
+        balance: t.balance,
+      }))
+    } else {
+      console.log(`📄 Parsing CSV...`)
+      const csvText = fileContent as string
+      console.log(`📄 CSV text length: ${csvText.length} chars`)
+      console.log(`📄 CSV preview: ${csvText.substring(0, 300)}`)
+      
+      const { parseCSVStatement } = await import('./simple-bank-parser')
+      const parsed = parseCSVStatement(csvText)
+      console.log(`📄 CSV parser returned ${parsed.length} transactions`)
+      
+      rawTransactions = parsed.map(t => ({
+        date: t.date,
+        description: t.description,
+        debit: t.type === 'debit' ? Math.abs(t.amount) : 0,
+        credit: t.type === 'credit' ? Math.abs(t.amount) : 0,
+        balance: t.balance,
+      }))
+    }
+  } catch (parseError) {
+    console.error(`❌ Parser error:`, parseError)
+    throw parseError
   }
 
   console.log(`✅ Parser returned ${rawTransactions.length} raw transactions`)
+  
+  if (rawTransactions.length === 0) {
+    console.error(`❌ CRITICAL: Parser returned 0 transactions!`)
+    console.error(`   This means the CSV/PDF was not parsed correctly.`)
+    console.error(`   Check the parser logs above for details.`)
+  }
 
   const transactions: BankTransaction[] = rawTransactions.map(t => ({
     date: t.date.toISOString(),
@@ -90,6 +110,21 @@ export async function processBankStatement(
   }))
   
   console.log(`✅ Converted to ${transactions.length} BankTransaction objects`)
+  
+  if (transactions.length === 0) {
+    console.error(`❌ CRITICAL: No transactions to process!`)
+    return {
+      transactions: [],
+      cashBalanceChange: 0,
+      newCashBalance: 0,
+      billsPaid: 0,
+      invoicesPaid: 0,
+      newTransactions: 0,
+      needsReviewCount: 0,
+      duplicatesSkipped: 0,
+      averageConfidence: 0,
+    }
+  }
 
   const matched: MatchedTransaction[] = []
   let cashChange = 0

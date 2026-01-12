@@ -70,17 +70,45 @@ export async function POST(request: NextRequest) {
       }, { status: 200 })
     } else {
       // Use bank statement parser for CSV or PDF
-      const result = isCSV 
-        ? await processBankStatement(text, companyId, bankAccountId)
-        : await processBankStatement(await file.arrayBuffer().then(buf => Buffer.from(buf)), companyId, bankAccountId, true)
+      console.log(`\n🚀 Starting bank statement processing...`)
+      console.log(`   File: ${file.name}`)
+      console.log(`   Type: ${isCSV ? 'CSV' : 'PDF'}`)
+      console.log(`   Company ID: ${companyId}`)
+      console.log(`   File size: ${file.size} bytes`)
       
-      console.log(`✅ Bank statement processed successfully:
-        - Transactions: ${result.newTransactions}
-        - Bills Paid: ${result.billsPaid}
-        - Invoices Received: ${result.invoicesPaid}
-        - Cash Change: ₹${result.cashBalanceChange}
-        - New Cash Balance: ₹${result.newCashBalance}
-      `)
+      if (isCSV) {
+        console.log(`   CSV preview (first 200 chars): ${text.substring(0, 200)}`)
+      }
+      
+      let result
+      try {
+        if (isCSV) {
+          console.log(`📄 Calling processBankStatement with CSV text (${text.length} chars)`)
+          result = await processBankStatement(text, companyId, bankAccountId)
+        } else {
+          const buffer = await file.arrayBuffer().then(buf => Buffer.from(buf))
+          console.log(`📄 Calling processBankStatement with PDF buffer (${buffer.length} bytes)`)
+          result = await processBankStatement(buffer, companyId, bankAccountId, true)
+        }
+        
+        console.log(`\n📊 Processing Result:`)
+        console.log(`   - newTransactions: ${result.newTransactions}`)
+        console.log(`   - billsPaid: ${result.billsPaid}`)
+        console.log(`   - invoicesPaid: ${result.invoicesPaid}`)
+        console.log(`   - cashBalanceChange: ${result.cashBalanceChange}`)
+        console.log(`   - newCashBalance: ${result.newCashBalance}`)
+        console.log(`   - duplicatesSkipped: ${result.duplicatesSkipped}`)
+        console.log(`   - needsReviewCount: ${result.needsReviewCount}`)
+        console.log(`   - transactions array length: ${result.transactions.length}`)
+        
+        if (result.newTransactions === 0) {
+          console.warn(`⚠️ WARNING: 0 transactions created! This might indicate a parsing issue.`)
+        }
+        
+      } catch (processError) {
+        console.error(`❌ Error in processBankStatement:`, processError)
+        throw processError
+      }
 
       return NextResponse.json({
         success: true,

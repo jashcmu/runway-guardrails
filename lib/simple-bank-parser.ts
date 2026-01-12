@@ -18,17 +18,37 @@ export interface ParsedTransaction {
  */
 export function parseCSVStatement(csvText: string): ParsedTransaction[] {
   console.log('🔍 Starting universal CSV parse...')
+  console.log('📄 CSV Text Length:', csvText.length, 'chars')
   console.log('📄 CSV Preview (first 500 chars):', csvText.substring(0, 500))
   
-  const result = Papa.parse(csvText, {
-    header: true,
-    skipEmptyLines: true,
-  })
+  // Remove BOM if present
+  if (csvText.charCodeAt(0) === 0xFEFF) {
+    csvText = csvText.slice(1)
+    console.log('📄 Removed UTF-8 BOM')
+  }
+  
+  // Try parsing with PapaParse
+  let result: Papa.ParseResult<any>
+  try {
+    result = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim(), // Trim whitespace from headers
+    })
+    
+    if (result.errors.length > 0) {
+      console.warn('⚠️ PapaParse warnings:', result.errors.slice(0, 5))
+    }
+  } catch (parseError) {
+    console.error('❌ PapaParse failed:', parseError)
+    throw new Error(`Failed to parse CSV: ${parseError}`)
+  }
 
   console.log(`📊 Papa parsed ${result.data.length} rows`)
   
   if (result.data.length === 0) {
     console.error('❌ No data rows found in CSV')
+    console.error('   CSV content:', csvText.substring(0, 1000))
     return []
   }
 
