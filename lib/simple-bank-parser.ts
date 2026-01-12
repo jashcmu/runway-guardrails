@@ -17,9 +17,9 @@ export interface ParsedTransaction {
  * Parse CSV - Ultra flexible, works with ANY format
  */
 export function parseCSVStatement(csvText: string): ParsedTransaction[] {
-  console.log('🔍 Starting universal CSV parse...')
-  console.log('📄 CSV Text Length:', csvText.length, 'chars')
-  console.log('📄 CSV Preview (first 500 chars):', csvText.substring(0, 500))
+  console.error('🔍 Starting universal CSV parse...')
+  console.error('📄 CSV Text Length:', csvText.length, 'chars')
+  console.error('📄 CSV Preview (first 500 chars):', csvText.substring(0, 500))
   
   // Remove BOM if present
   if (csvText.charCodeAt(0) === 0xFEFF) {
@@ -44,7 +44,7 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
     throw new Error(`Failed to parse CSV: ${parseError}`)
   }
 
-  console.log(`📊 Papa parsed ${result.data.length} rows`)
+  console.error(`📊 Papa parsed ${result.data.length} rows`)
   
   if (result.data.length === 0) {
     console.error('❌ No data rows found in CSV')
@@ -59,7 +59,7 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
   }
   
   const headers = Object.keys(firstRow)
-  console.log('📋 ALL Headers found:', JSON.stringify(headers))
+  console.error('📋 ALL Headers found:', JSON.stringify(headers))
 
   // Smart column detection - find the right columns
   let dateCol: string | null = null

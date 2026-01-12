@@ -47,11 +47,11 @@ export async function processBankStatement(
   bankAccountId?: string,
   isPDF = false
 ): Promise<ProcessingResult> {
-  console.log(`\n🚀 ========== PROCESSING BANK STATEMENT ==========`)
-  console.log(`   Type: ${isPDF ? 'PDF' : 'CSV'}`)
-  console.log(`   Company ID: ${companyId}`)
-  console.log(`   Input type: ${typeof fileContent}`)
-  console.log(`   Input length: ${isPDF ? (fileContent as Buffer).length : (fileContent as string).length}`)
+  console.error(`\n🚀 ========== PROCESSING BANK STATEMENT ==========`)
+  console.error(`   Type: ${isPDF ? 'PDF' : 'CSV'}`)
+  console.error(`   Company ID: ${companyId}`)
+  console.error(`   Input type: ${typeof fileContent}`)
+  console.error(`   Input length: ${isPDF ? (fileContent as Buffer).length : (fileContent as string).length}`)
   
   let rawTransactions: Array<{date: Date, description: string, debit: number, credit: number, balance?: number}>
   
@@ -93,7 +93,7 @@ export async function processBankStatement(
     throw parseError
   }
 
-  console.log(`✅ Parser returned ${rawTransactions.length} raw transactions`)
+  console.error(`✅ Parser returned ${rawTransactions.length} raw transactions`)
   
   if (rawTransactions.length === 0) {
     console.error(`❌ CRITICAL: Parser returned 0 transactions!`)
@@ -109,7 +109,7 @@ export async function processBankStatement(
     balance: t.balance || 0,
   }))
   
-  console.log(`✅ Converted to ${transactions.length} BankTransaction objects`)
+  console.error(`✅ Converted to ${transactions.length} BankTransaction objects`)
   
   if (transactions.length === 0) {
     console.error(`❌ CRITICAL: No transactions to process!`)
