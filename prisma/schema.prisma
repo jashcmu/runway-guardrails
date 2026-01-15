@@ -21,7 +21,7 @@ enum Category {
 model Company {
   id           String        @id @default(auto()) @map("_id") @db.ObjectId
   name         String
-  slug         String        @unique // Human-friendly identifier
+  slug         String?       @unique // Human-friendly identifier
   cashBalance  Float         @default(0) // Current cash balance
   targetMonths Int?                      // Target runway in months
   

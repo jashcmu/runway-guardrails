@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { calculateTrialBalance } from '@/lib/accounting/trial-balance'
 import { getAccountsByType } from '@/lib/accounting/chart-of-accounts'
 import { prisma } from '@/lib/prisma'

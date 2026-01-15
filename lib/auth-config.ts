@@ -4,7 +4,18 @@ import { prisma } from "./prisma"
 import Google from "next-auth/providers/google"
 import { cookies } from "next/headers"
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string
+      name?: string | null
+      email?: string | null
+      image?: string | null
+    }
+  }
+}
+
+const authOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     Google({
@@ -27,7 +38,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   events: {
     // Clear old sessions when a user signs in
-    async signIn({ user, account, isNewUser }) {
+    async signIn({ user, account, isNewUser }: { user: any, account: any, isNewUser: any }) {
       console.log('📣 SignIn Event:', user.email, 'isNewUser:', isNewUser)
       
       // If this is a new user OR the OAuth account doesn't match the existing session,
@@ -51,7 +62,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account, profile }: { user: any, account: any, profile: any }) {
       console.log('🔐 Sign in attempt:', user.email)
       
       if (!user.email) {
@@ -124,7 +135,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       return true
     },
-    async session({ session, user }) {
+    async session({ session, user }: { session: any, user: any }) {
       if (session.user) {
         session.user.id = user.id
         // Fetch user's companies
@@ -152,7 +163,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session
     },
-    async redirect({ url, baseUrl }) {
+    async redirect({ url, baseUrl }: { url: any, baseUrl: any }) {
       // If the URL is relative, prefix with baseUrl
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`
@@ -169,7 +180,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "database",
     maxAge: 7 * 24 * 60 * 60, // 7 days
   },
-  trustHost: true,
   debug: process.env.NODE_ENV === 'development',
-})
+}
+
+export default NextAuth(authOptions as any)
+export { authOptions }
+
+// For server-side auth
+import { getServerSession } from "next-auth/next"
+export const auth = () => getServerSession(authOptions as any) as Promise<any>
 

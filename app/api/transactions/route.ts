@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { Category } from '@prisma/client'
 import { categorizeExpense } from '@/lib/categorize'

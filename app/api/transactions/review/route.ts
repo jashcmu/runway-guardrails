@@ -1,4 +1,5 @@
 /**
+export const dynamic = 'force-dynamic'
  * Transaction Review Queue API
  * Manages transactions that need manual review due to low classification confidence
  * 

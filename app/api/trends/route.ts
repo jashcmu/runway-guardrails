@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { getBurnTrend } from '@/lib/burn-trends'
 
 export async function GET(request: NextRequest) {
