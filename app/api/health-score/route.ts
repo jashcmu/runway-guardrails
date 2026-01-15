@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { calculateFinancialHealthScore } from '@/lib/ai-insights'
 
 export async function GET(request: NextRequest) {

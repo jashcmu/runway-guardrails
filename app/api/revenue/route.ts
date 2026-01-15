@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { createRevenueJournalEntry, createPaymentReceivedJournalEntry, initializeChartOfAccounts } from '@/lib/accounting/journal-entries'
 

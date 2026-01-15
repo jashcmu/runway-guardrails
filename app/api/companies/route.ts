@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { generateSlug, isValidSlug } from '@/lib/slug'
 import { verifyToken, getTokenFromCookies } from '@/lib/jwt'

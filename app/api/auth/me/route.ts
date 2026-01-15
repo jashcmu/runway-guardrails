@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { verifyToken, getTokenFromCookies } from '@/lib/jwt'
 import { auth } from '@/lib/auth-config'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     let userId: string | null = null
