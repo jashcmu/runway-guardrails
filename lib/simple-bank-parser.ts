@@ -315,72 +315,194 @@ function parseDate(dateStr: string): Date | null {
 }
 
 /**
- * Parse PDF - Extract transactions from any PDF
+ * Parse PDF - Extract transactions from any PDF with multiple fallback methods
  */
 export async function parsePDFStatement(pdfBuffer: Buffer): Promise<ParsedTransaction[]> {
   console.log('🔍 Starting PDF parse...')
-  
+
   try {
-    const pdfParseModule = await import('pdf-parse')
-    const pdfParse = (pdfParseModule as any).default || pdfParseModule
-    const data = await pdfParse(pdfBuffer)
-    const text: string = data.text
+    // Method 1: Try pdftotext command line tool with layout mode (most reliable)
+    try {
+      const { execSync } = await import('child_process')
+      const fs = await import('fs')
+      const os = await import('os')
+      const path = await import('path')
+      
+      // Write buffer to temp file
+      const tempFile = path.join(os.tmpdir(), `pdf-parse-${Date.now()}.pdf`)
+      fs.writeFileSync(tempFile, pdfBuffer)
+      
+      // Run pdftotext with -layout to preserve table structure
+      const text = execSync(`pdftotext -layout "${tempFile}" -`, { encoding: 'utf8', timeout: 30000 })
+      
+      // Clean up temp file
+      fs.unlinkSync(tempFile)
+      
+      console.log(`📄 PDF extracted ${text.length} characters using pdftotext -layout`)
+      console.log('📄 PDF Preview:', text.substring(0, 500))
 
-    console.log(`📄 PDF extracted ${text.length} characters`)
-    console.log('📄 PDF Preview:', text.substring(0, 500))
+      const transactions = parseBankStatementText(text)
+      if (transactions.length > 0) {
+        console.log(`🎉 Parsed ${transactions.length} transactions from PDF using pdftotext`)
+        return transactions
+      }
+    } catch (pdftotextError: any) {
+      console.warn('⚠️ pdftotext failed, trying fallback:', pdftotextError.message)
+    }
 
-    const transactions: ParsedTransaction[] = []
-    const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 5)
+    // Method 2: Try pdf-parse library
+    try {
+      const pdfParseModule = await import('pdf-parse')
+      const pdfParse = (pdfParseModule as any).default || pdfParseModule
+      const data = await pdfParse(pdfBuffer)
+      const text: string = data.text
 
-    console.log(`📊 Processing ${lines.length} lines from PDF...`)
+      console.log(`📄 PDF extracted ${text.length} characters using pdf-parse`)
+      console.log('📄 PDF Preview:', text.substring(0, 500))
 
-    for (const line of lines) {
-      // Skip header-like lines
-      const lineLower = line.toLowerCase()
-      if (lineLower.includes('date') && lineLower.includes('description') ||
-          lineLower.includes('particulars') ||
-          lineLower.includes('opening balance') ||
-          lineLower.includes('closing balance')) {
+      const transactions = parseBankStatementText(text)
+      if (transactions.length > 0) {
+        console.log(`🎉 Parsed ${transactions.length} transactions from PDF using pdf-parse`)
+        return transactions
+      }
+    } catch (pdfParseError: any) {
+      console.warn('⚠️ pdf-parse failed:', pdfParseError.message)
+    }
+
+    console.error('❌ All PDF parsing methods failed to extract transactions')
+    return []
+
+  } catch (error) {
+    console.error('❌ PDF parsing failed:', error)
+    throw new Error(`PDF parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Parse bank statement text extracted from PDF
+ * Handles both layout-formatted tables and messy extractions
+ */
+function parseBankStatementText(text: string): ParsedTransaction[] {
+  console.log('📊 Parsing bank statement text...')
+  
+  const transactions: ParsedTransaction[] = []
+  const lines = text.split('\n')
+  
+  // Pattern for table rows: Date followed by description and amounts
+  // Format: DD/MM/YYYY   Description                    Debit    Credit    Balance
+  const tableRowPattern = /^(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+?)\s{2,}([\d,.]+)?\s*([\d,.]+)?\s*([\d,.]+)?$/
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim()
+    if (!trimmedLine) continue
+    
+    // Try to match table row format
+    const match = trimmedLine.match(tableRowPattern)
+    if (match) {
+      const dateStr = match[1]
+      const description = match[2].trim()
+      
+      // Parse amounts - could be in debit, credit, or balance columns
+      const amounts: number[] = []
+      for (let i = 3; i <= 5; i++) {
+        if (match[i]) {
+          const amount = parseFloat(match[i].replace(/,/g, ''))
+          if (!isNaN(amount) && amount > 0) {
+            amounts.push(amount)
+          }
+        }
+      }
+      
+      const date = parseDate(dateStr)
+      if (!date) continue
+      
+      // Skip opening/closing balance
+      const descLower = description.toLowerCase()
+      if (descLower.includes('opening balance') || descLower.includes('closing balance')) {
         continue
       }
-
-      // Look for date pattern at start of line
-      const dateMatch = line.match(/^(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/)
-      if (!dateMatch) continue
-
-      const date = parseDate(dateMatch[1])
-      if (!date) continue
-
-      // Look for amounts (numbers with optional commas)
-      const amountMatches = [...line.matchAll(/([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2})?)/g)]
-        .map(m => parseFloat(m[1].replace(/,/g, '')))
-        .filter(n => !isNaN(n) && n >= 10)
-
-      if (amountMatches.length === 0) continue
-
-      // Description is text between date and first amount
-      const afterDate = line.substring(dateMatch[0].length).trim()
-      let description = afterDate.split(/\d{1,3}(?:,\d{2,3})*(?:\.\d{2})?/)[0].trim()
-      if (!description || description.length < 2) description = 'PDF Transaction'
-
-      // Determine type from context
-      const isCredit = lineLower.includes('cr') || lineLower.includes('credit') || lineLower.includes('deposit')
-      const type: 'debit' | 'credit' = isCredit ? 'credit' : 'debit'
-      const amount = type === 'credit' ? amountMatches[0] : -amountMatches[0]
-
+      
+      // Skip if no transaction amount (only balance)
+      if (amounts.length === 0) continue
+      if (amounts.length === 1 && descLower.includes('balance')) continue
+      
+      // Determine type and amount
+      let type: 'debit' | 'credit'
+      let amount: number
+      
+      // The transaction amount is the first amount (debit or credit)
+      // The last amount is usually the balance
+      const txnAmount = amounts[0]
+      
+      // Check description context to determine type
+      const isCredit = descLower.includes('customer payment') || 
+                       descLower.includes('received') || 
+                       descLower.includes('credit') ||
+                       descLower.includes('deposit') ||
+                       descLower.includes('refund') ||
+                       descLower.includes('collection')
+      
+      // If description suggests credit or if the line structure suggests credit column
+      // In the layout format, credit amounts appear after debit column
+      if (isCredit) {
+        type = 'credit'
+        amount = txnAmount
+      } else {
+        type = 'debit'
+        amount = -txnAmount
+      }
+      
       transactions.push({
         date,
         description,
         amount,
         type,
       })
+      
+      console.log(`✅ ${date.toISOString().split('T')[0]} | ${type} | ₹${Math.abs(amount)} | ${description}`)
+      continue
     }
-
-    console.log(`🎉 Parsed ${transactions.length} transactions from PDF`)
-    return transactions
-
-  } catch (error) {
-    console.error('❌ PDF parse error:', error)
-    throw error
+    
+    // Fallback: Try simpler date-based parsing for non-layout text
+    const simpleDateMatch = trimmedLine.match(/^(\d{1,2}\/\d{1,2}\/\d{4})/)
+    if (simpleDateMatch) {
+      const dateStr = simpleDateMatch[1]
+      const rest = trimmedLine.substring(dateStr.length).trim()
+      
+      // Extract amounts from the rest
+      const amountMatches = rest.match(/[\d,]+\.\d{2}/g)
+      if (!amountMatches || amountMatches.length === 0) continue
+      
+      const amounts = amountMatches.map(a => parseFloat(a.replace(/,/g, ''))).filter(a => !isNaN(a) && a > 0)
+      if (amounts.length === 0) continue
+      
+      // Extract description (text before first amount)
+      const firstAmountIndex = rest.search(/[\d,]+\.\d{2}/)
+      const description = rest.substring(0, firstAmountIndex).trim()
+      
+      if (!description || description.length < 2) continue
+      
+      const descLower = description.toLowerCase()
+      if (descLower.includes('opening balance') || descLower.includes('closing balance')) continue
+      
+      const date = parseDate(dateStr)
+      if (!date) continue
+      
+      const txnAmount = amounts[0]
+      const isCredit = descLower.includes('customer payment') || descLower.includes('received')
+      
+      transactions.push({
+        date,
+        description,
+        amount: isCredit ? txnAmount : -txnAmount,
+        type: isCredit ? 'credit' : 'debit',
+      })
+      
+      console.log(`✅ ${date.toISOString().split('T')[0]} | ${isCredit ? 'credit' : 'debit'} | ₹${txnAmount} | ${description}`)
+    }
   }
+  
+  console.log(`🎉 Parsed ${transactions.length} transactions from bank statement`)
+  return transactions
 }
+
