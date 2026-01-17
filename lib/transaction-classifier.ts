@@ -541,7 +541,7 @@ async function checkHistoricalPattern(txn: TransactionContext): Promise<MatchRes
   }
 }
 
-// Strategy 5: AI Classification
+// Strategy 5: AI Classification using LLM Categorizer
 async function tryAIClassification(txn: TransactionContext): Promise<MatchResult> {
   try {
     // Check if OpenAI is configured
@@ -552,53 +552,41 @@ async function tryAIClassification(txn: TransactionContext): Promise<MatchResult
       }
     }
 
-    const { chatCompletion } = await import('./openai-client')
+    // Use the new LLM categorizer
+    const { categorizeWithLLM } = await import('./llm-categorizer')
 
-    const prompt = `Classify this Indian bank transaction:
-Description: "${txn.description}"
-Amount: ₹${Math.abs(txn.amount).toLocaleString('en-IN')}
-Type: ${txn.type === 'credit' ? 'Incoming (Credit)' : 'Outgoing (Debit)'}
-Date: ${txn.date.toLocaleDateString('en-IN')}
+    const result = await categorizeWithLLM({
+      description: txn.description,
+      amount: txn.amount,
+      date: txn.date,
+      type: txn.type
+    })
 
-Categories: Hiring, Marketing, SaaS, Cloud, G_A (General & Admin)
-
-Respond with JSON only:
-{
-  "category": "Hiring|Marketing|SaaS|Cloud|G_A",
-  "vendorOrCustomer": "extracted name or null",
-  "isRecurring": true|false,
-  "frequency": "weekly|monthly|quarterly|yearly|null",
-  "reasoning": "brief explanation"
-}`
-
-    const response = await chatCompletion([
-      { role: 'system', content: 'You are a financial transaction classifier. Return only valid JSON.' },
-      { role: 'user', content: prompt }
-    ])
-
-    const parsed = JSON.parse(response)
-    const categoryMap: Record<string, Category> = {
-      'Hiring': Category.Hiring,
-      'Marketing': Category.Marketing,
-      'SaaS': Category.SaaS,
-      'Cloud': Category.Cloud,
-      'G_A': Category.G_A
+    // Check if LLM actually processed it (not a fallback)
+    if (result.flags.includes('llm_error') || result.flags.includes('parse_error')) {
+      return {
+        matched: false,
+        reason: 'AI classification failed, will use rule-based fallback'
+      }
     }
+
+    // LLM categorizer returns higher confidence - use 85% for primary LLM classification
+    const LLM_CONFIDENCE = 85
 
     return {
       matched: true,
       result: {
         type: txn.type === 'credit' ? 'revenue' : 'expense',
-        category: categoryMap[parsed.category] || Category.G_A,
-        confidence: AI_CLASSIFICATION_CONFIDENCE,
-        vendorName: txn.type === 'debit' ? parsed.vendorOrCustomer : undefined,
-        customerName: txn.type === 'credit' ? parsed.vendorOrCustomer : undefined,
-        expenseType: parsed.isRecurring ? 'recurring' : 'one-time',
-        frequency: parsed.frequency || undefined,
-        needsReview: true,
+        category: result.category,
+        confidence: Math.min(result.confidence, LLM_CONFIDENCE),
+        vendorName: txn.type === 'debit' ? result.vendorName || undefined : undefined,
+        customerName: txn.type === 'credit' ? result.vendorName || undefined : undefined,
+        expenseType: result.isRecurring ? 'recurring' : 'one-time',
+        frequency: result.suggestedFrequency as 'weekly' | 'monthly' | 'quarterly' | 'yearly' | undefined,
+        needsReview: result.confidence < REVIEW_THRESHOLD || result.flags.length > 0,
         reasoning: []
       },
-      reason: `AI classification: ${parsed.reasoning}`
+      reason: `LLM classification: ${result.reasoning}`
     }
   } catch (error) {
     return {

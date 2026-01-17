@@ -156,13 +156,66 @@ export async function createExpenseJournalEntry(
   date: Date,
   gstAmount?: number
 ): Promise<JournalEntryResult> {
-  // Map category to expense account code
+  // Map category to expense account code (expanded for all categories)
   const categoryToAccountCode: Record<Category, string> = {
-    Hiring: '5000', // Salaries and Wages
-    Marketing: '5100', // Digital Marketing
-    SaaS: '5200', // Software Subscriptions
-    Cloud: '5300', // Cloud Services
-    G_A: '5400', // Office Rent (or 5480 for misc)
+    // Personnel & HR
+    Hiring: '5000', // Hiring & Recruitment
+    Salaries: '5010', // Salaries & Wages
+    Benefits: '5020', // Employee Benefits
+    Training: '5030', // Training & Development
+    
+    // Sales & Marketing
+    Marketing: '5100', // Marketing
+    Sales: '5110', // Sales
+    Advertising: '5120', // Advertising
+    Events: '5130', // Events & Conferences
+    
+    // Technology
+    SaaS: '5200', // SaaS Tools
+    Cloud: '5210', // Cloud Services
+    ITInfrastructure: '5220', // IT Infrastructure
+    Software: '5230', // Software
+    Hardware: '5240', // Hardware
+    Security: '5250', // Security
+    
+    // Operations
+    Rent: '5300', // Rent & Facilities
+    Utilities: '5310', // Utilities
+    OfficeSupplies: '5320', // Office Supplies
+    Equipment: '5330', // Equipment & Furniture
+    Maintenance: '5340', // Maintenance
+    
+    // Professional Services
+    Legal: '5400', // Legal
+    Accounting: '5410', // Accounting & Audit
+    Consulting: '5420', // Consulting
+    ProfessionalServices: '5430', // Professional Services
+    
+    // Travel & Entertainment
+    Travel: '5500', // Travel
+    Meals: '5510', // Meals & Food
+    Entertainment: '5520', // Entertainment
+    
+    // Finance
+    Taxes: '5600', // Taxes & Duties
+    Insurance: '5610', // Insurance
+    BankFees: '5620', // Bank Fees
+    PaymentProcessing: '5630', // Payment Processing
+    InterestCharges: '5640', // Interest & Finance
+    
+    // R&D
+    ResearchDevelopment: '5700', // R&D
+    
+    // Customer Operations
+    CustomerSupport: '5800', // Customer Support
+    Subscriptions: '5810', // Subscriptions
+    
+    // Other
+    Refunds: '5900', // Refunds & Returns
+    Depreciation: '5910', // Depreciation
+    BadDebts: '5920', // Bad Debts
+    G_A: '5950', // General & Admin
+    Other: '5999', // Other
   }
 
   const expenseAccountCode = categoryToAccountCode[category]

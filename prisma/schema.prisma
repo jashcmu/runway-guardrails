@@ -11,11 +11,64 @@ datasource db {
 }
 
 enum Category {
+  // Personnel & HR
   Hiring
+  Salaries
+  Benefits
+  Training
+  
+  // Sales & Marketing
   Marketing
+  Sales
+  Advertising
+  Events
+  
+  // Technology
   SaaS
   Cloud
+  ITInfrastructure
+  Software
+  Hardware
+  Security
+  
+  // Operations
+  Rent
+  Utilities
+  OfficeSupplies
+  Equipment
+  Maintenance
+  
+  // Professional Services
+  Legal
+  Accounting
+  Consulting
+  ProfessionalServices
+  
+  // Travel & Entertainment
+  Travel
+  Meals
+  Entertainment
+  
+  // Finance
+  Taxes
+  Insurance
+  BankFees
+  PaymentProcessing
+  InterestCharges
+  
+  // R&D
+  ResearchDevelopment
+  
+  // Customer Operations
+  CustomerSupport
+  Subscriptions
+  
+  // Other
+  Refunds
+  Depreciation
+  BadDebts
   G_A
+  Other
 }
 
 model Company {

@@ -4,13 +4,37 @@ import { prisma } from '@/lib/prisma'
 import { getDataQuality } from '@/lib/calculations'
 import { calculateBurnRateMetrics } from '@/lib/burn-rate-calculator'
 import { Category } from '@prisma/client'
+import { CATEGORY_DISPLAY_NAMES, CATEGORY_GROUPS, getCategoryGroup } from '@/lib/categorize'
+
+interface CategorySpend {
+  category: Category
+  displayName: string
+  group: string
+  spend: number
+  budget: number
+  percentage: number
+  status: 'under' | 'warning' | 'over' | 'no-budget'
+  transactionCount: number
+  percentOfTotal: number
+  trend: 'up' | 'down' | 'stable'
+  previousMonthSpend: number
+  trendPercentage: number
+}
+
+interface MonthlySpend {
+  month: string
+  year: number
+  monthNum: number
+  total: number
+  byCategory: Record<string, number>
+}
 
 function getMonthToDateSpendByCategory(
   transactions: Array<{ date: Date; amount: any; category: Category }>,
   year: number,
   month: number
-): Map<Category, number> {
-  const spendByCategory = new Map<Category, number>()
+): Map<Category, { amount: number; count: number }> {
+  const spendByCategory = new Map<Category, { amount: number; count: number }>()
 
   for (const transaction of transactions) {
     const date = new Date(transaction.date)
@@ -19,12 +43,95 @@ function getMonthToDateSpendByCategory(
         ? transaction.amount
         : parseFloat(String(transaction.amount))
 
-      const current = spendByCategory.get(transaction.category) || 0
-      spendByCategory.set(transaction.category, current + amount)
+      // Only count expenses (negative amounts)
+      if (amount < 0) {
+        const current = spendByCategory.get(transaction.category) || { amount: 0, count: 0 }
+        spendByCategory.set(transaction.category, { 
+          amount: current.amount + Math.abs(amount),
+          count: current.count + 1
+        })
+      }
     }
   }
 
   return spendByCategory
+}
+
+function getMonthlySpendTrend(
+  transactions: Array<{ date: Date; amount: any; category: Category }>,
+  months: number = 6
+): MonthlySpend[] {
+  const monthlyData: MonthlySpend[] = []
+  const now = new Date()
+  
+  for (let i = months - 1; i >= 0; i--) {
+    const targetDate = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const year = targetDate.getFullYear()
+    const monthNum = targetDate.getMonth()
+    const monthName = targetDate.toLocaleString('en-US', { month: 'short' })
+    
+    const byCategory: Record<string, number> = {}
+    let total = 0
+    
+    for (const txn of transactions) {
+      const txnDate = new Date(txn.date)
+      if (txnDate.getFullYear() === year && txnDate.getMonth() === monthNum) {
+        const amount = typeof txn.amount === 'number' ? txn.amount : parseFloat(String(txn.amount))
+        if (amount < 0) {
+          const absAmount = Math.abs(amount)
+          byCategory[txn.category] = (byCategory[txn.category] || 0) + absAmount
+          total += absAmount
+        }
+      }
+    }
+    
+    monthlyData.push({
+      month: `${monthName} ${year}`,
+      year,
+      monthNum,
+      total,
+      byCategory
+    })
+  }
+  
+  return monthlyData
+}
+
+function getTopVendors(
+  transactions: Array<{ description?: string | null; amount: any; vendorName?: string | null }>,
+  limit: number = 10
+): Array<{ name: string; total: number; count: number }> {
+  const vendorSpend: Record<string, { total: number; count: number }> = {}
+  
+  for (const txn of transactions) {
+    const amount = typeof txn.amount === 'number' ? txn.amount : parseFloat(String(txn.amount))
+    if (amount < 0) {
+      const vendor = txn.vendorName || extractVendor(txn.description || '') || 'Unknown'
+      if (!vendorSpend[vendor]) {
+        vendorSpend[vendor] = { total: 0, count: 0 }
+      }
+      vendorSpend[vendor].total += Math.abs(amount)
+      vendorSpend[vendor].count++
+    }
+  }
+  
+  return Object.entries(vendorSpend)
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limit)
+}
+
+function extractVendor(description: string): string {
+  // Simple vendor extraction
+  const cleaned = description
+    .replace(/UPI\/\d+\/.*$/i, '')
+    .replace(/NEFT\/.*$/i, '')
+    .replace(/IMPS\/.*$/i, '')
+    .replace(/\d{10,}/g, '')
+    .trim()
+  
+  const words = cleaned.split(/\s+/).slice(0, 3)
+  return words.join(' ') || 'Unknown'
 }
 
 export async function GET(request: NextRequest) {
@@ -90,66 +197,147 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Get transactions for month-to-date calculation
+    // Get transactions for analytics
     const transactions = await prisma.transaction.findMany({
       where: { companyId: actualCompanyId },
       select: {
         date: true,
         amount: true,
         category: true,
+        description: true,
+        vendorName: true,
       },
     })
 
+    // Current month spend by category
     const mtdSpendByCategory = getMonthToDateSpendByCategory(
       transactions,
       currentYear,
       currentMonth
     )
+    
+    // Previous month spend for trend calculation
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear
+    const prevMonthSpendByCategory = getMonthToDateSpendByCategory(
+      transactions,
+      prevYear,
+      prevMonth
+    )
+    
+    // Calculate total spend this month
+    const totalMonthSpend = Array.from(mtdSpendByCategory.values())
+      .reduce((sum, val) => sum + val.amount, 0)
 
-    // Build category budget data - show all categories, even without budgets
+    // Build enhanced category data
     const allCategories = Object.values(Category)
-    const categoryData = allCategories.map(cat => {
+    const categoryData: CategorySpend[] = allCategories.map(cat => {
       const budget = activeBudgets.find(b => b.category === cat)
       const budgetAmount = budget 
         ? (typeof budget.amount === 'number' ? budget.amount : parseFloat(String(budget.amount)))
         : 0
       
-      const mtdSpend = mtdSpendByCategory.get(cat) || 0
+      const mtdData = mtdSpendByCategory.get(cat) || { amount: 0, count: 0 }
+      const prevData = prevMonthSpendByCategory.get(cat) || { amount: 0, count: 0 }
+      const mtdSpend = mtdData.amount
+      const prevSpend = prevData.amount
+      
       const percentage = budgetAmount > 0 ? (mtdSpend / budgetAmount) * 100 : 0
       
+      // Determine budget status
       let status: 'under' | 'warning' | 'over' | 'no-budget' = 'no-budget'
       if (budgetAmount > 0) {
-        if (percentage >= 100) {
-          status = 'over'
-        } else if (percentage >= 80) {
-          status = 'warning'
-        } else {
-          status = 'under'
-        }
+        if (percentage >= 100) status = 'over'
+        else if (percentage >= 80) status = 'warning'
+        else status = 'under'
+      }
+      
+      // Determine trend
+      let trend: 'up' | 'down' | 'stable' = 'stable'
+      let trendPercentage = 0
+      if (prevSpend > 0) {
+        trendPercentage = ((mtdSpend - prevSpend) / prevSpend) * 100
+        if (trendPercentage > 10) trend = 'up'
+        else if (trendPercentage < -10) trend = 'down'
+      } else if (mtdSpend > 0) {
+        trend = 'up'
+        trendPercentage = 100
       }
 
       return {
         category: cat,
-        budget: budgetAmount,
+        displayName: CATEGORY_DISPLAY_NAMES[cat] || cat,
+        group: getCategoryGroup(cat),
         spend: mtdSpend,
+        budget: budgetAmount,
         percentage: budgetAmount > 0 ? Math.round(percentage) : 0,
         status,
+        transactionCount: mtdData.count,
+        percentOfTotal: totalMonthSpend > 0 ? Math.round((mtdSpend / totalMonthSpend) * 100) : 0,
+        trend,
+        previousMonthSpend: prevSpend,
+        trendPercentage: Math.round(trendPercentage)
       }
-    })
+    }).filter(c => c.spend > 0 || c.budget > 0) // Only return categories with activity or budget
+
+    // Get spending trends for last 6 months
+    const monthlyTrend = getMonthlySpendTrend(transactions, 6)
+    
+    // Get top vendors
+    const topVendors = getTopVendors(transactions, 10)
+    
+    // Group spending by category groups
+    const spendByGroup: Record<string, number> = {}
+    for (const cat of categoryData) {
+      spendByGroup[cat.group] = (spendByGroup[cat.group] || 0) + cat.spend
+    }
 
     // Calculate required cash for target months
     const requiredCash = targetMonths ? monthlyBurn * targetMonths : null
     const cashShortfall = requiredCash ? Math.max(0, requiredCash - cashBalance) : null
+    
+    // Summary stats
+    const totalTransactions = transactions.length
+    const totalExpenses = transactions.filter(t => {
+      const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount))
+      return amt < 0
+    }).length
+    const totalRevenue = transactions.filter(t => {
+      const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount))
+      return amt > 0
+    }).length
 
     return NextResponse.json({
+      // Core metrics
       cashBalance,
       monthlyBurn,
       runway: runway === Infinity ? null : runway,
-      categories: categoryData,
       targetMonths,
       requiredCash,
       cashShortfall,
       dataQuality,
+      
+      // Enhanced category analytics
+      categories: categoryData,
+      categoryGroups: CATEGORY_GROUPS,
+      spendByGroup,
+      totalMonthSpend,
+      
+      // Trends
+      monthlyTrend,
+      
+      // Top vendors
+      topVendors,
+      
+      // Summary
+      summary: {
+        totalTransactions,
+        totalExpenses,
+        totalRevenue,
+        categoriesWithSpend: categoryData.filter(c => c.spend > 0).length,
+        categoriesOverBudget: categoryData.filter(c => c.status === 'over').length,
+        categoriesWarning: categoryData.filter(c => c.status === 'warning').length
+      }
     })
 
   } catch (error) {

@@ -186,7 +186,25 @@ const authOptions = {
 export default NextAuth(authOptions as any)
 export { authOptions }
 
-// For server-side auth
-import { getServerSession } from "next-auth/next"
-export const auth = () => getServerSession(authOptions as any) as Promise<any>
+// Session type for auth()
+interface AuthSession {
+  user?: {
+    id?: string
+    name?: string | null
+    email?: string | null
+    image?: string | null
+  }
+  expires?: string
+}
+
+// For server-side auth - using dynamic import to avoid build issues
+export async function auth(): Promise<AuthSession | null> {
+  try {
+    const { getServerSession } = await import("next-auth")
+    return getServerSession(authOptions as any) as Promise<AuthSession | null>
+  } catch (e) {
+    console.warn('Failed to get server session:', e)
+    return null
+  }
+}
 

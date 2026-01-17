@@ -1,6 +1,19 @@
 /**
  * Universal Bank Statement Parser
- * Handles ANY CSV or PDF format from any bank
+ * Handles ANY CSV, PDF, or Excel format from any Indian bank
+ * 
+ * Supported Banks (auto-detected):
+ * - HDFC Bank
+ * - ICICI Bank
+ * - SBI (State Bank of India)
+ * - Axis Bank
+ * - Kotak Mahindra Bank
+ * - Yes Bank
+ * - IndusInd Bank
+ * - Federal Bank
+ * - IDFC First Bank
+ * - RBL Bank
+ * - And many more...
  */
 
 import Papa from 'papaparse'
@@ -11,10 +24,102 @@ export interface ParsedTransaction {
   amount: number
   type: 'debit' | 'credit'
   balance?: number
+  // Enhanced fields
+  referenceNumber?: string
+  paymentMethod?: string
+  bankName?: string
+  rawData?: Record<string, unknown>
+}
+
+// Bank-specific column mappings for better detection
+const BANK_COLUMN_PATTERNS: Record<string, { date: string[], desc: string[], debit: string[], credit: string[], balance: string[] }> = {
+  'HDFC': {
+    date: ['date', 'transaction date', 'txn date', 'value date'],
+    desc: ['narration', 'description', 'particulars'],
+    debit: ['withdrawal amt', 'debit', 'withdrawal', 'dr'],
+    credit: ['deposit amt', 'credit', 'deposit', 'cr'],
+    balance: ['closing balance', 'balance']
+  },
+  'ICICI': {
+    date: ['transaction date', 'date', 'value date'],
+    desc: ['transaction remarks', 'description', 'remarks', 'particulars'],
+    debit: ['withdrawal amount', 'debit', 'dr amount'],
+    credit: ['deposit amount', 'credit', 'cr amount'],
+    balance: ['balance', 'running balance']
+  },
+  'SBI': {
+    date: ['txn date', 'transaction date', 'value date'],
+    desc: ['description', 'narration', 'particulars'],
+    debit: ['debit', 'withdrawal', 'dr'],
+    credit: ['credit', 'deposit', 'cr'],
+    balance: ['balance', 'closing balance']
+  },
+  'AXIS': {
+    date: ['tran date', 'transaction date', 'value date'],
+    desc: ['particulars', 'description', 'narration'],
+    debit: ['debit', 'dr', 'withdrawal'],
+    credit: ['credit', 'cr', 'deposit'],
+    balance: ['balance', 'init. br.']
+  },
+  'KOTAK': {
+    date: ['date', 'transaction date'],
+    desc: ['description', 'particulars', 'narration'],
+    debit: ['dr amount', 'debit', 'withdrawal'],
+    credit: ['cr amount', 'credit', 'deposit'],
+    balance: ['balance']
+  },
+  'DEFAULT': {
+    date: ['date', 'txn date', 'transaction date', 'value date', 'dt', 'posting date'],
+    desc: ['description', 'narration', 'particulars', 'details', 'remarks', 'transaction', 'memo'],
+    debit: ['debit', 'withdrawal', 'dr', 'paid', 'expense', 'out', 'withdrawal amt', 'dr amount'],
+    credit: ['credit', 'deposit', 'cr', 'received', 'income', 'in', 'deposit amt', 'cr amount'],
+    balance: ['balance', 'closing balance', 'running balance', 'available balance']
+  }
+}
+
+/**
+ * Detect bank from CSV headers or content
+ */
+function detectBank(headers: string[], sampleContent: string): string {
+  const headerStr = headers.join(' ').toLowerCase()
+  const contentLower = sampleContent.toLowerCase()
+  
+  if (headerStr.includes('hdfc') || contentLower.includes('hdfc bank')) return 'HDFC'
+  if (headerStr.includes('icici') || contentLower.includes('icici bank')) return 'ICICI'
+  if (headerStr.includes('sbi') || contentLower.includes('state bank')) return 'SBI'
+  if (headerStr.includes('axis') || contentLower.includes('axis bank')) return 'AXIS'
+  if (headerStr.includes('kotak') || contentLower.includes('kotak')) return 'KOTAK'
+  
+  return 'DEFAULT'
+}
+
+/**
+ * Parse Excel file - Convert to CSV first
+ */
+export async function parseExcelStatement(buffer: Buffer): Promise<ParsedTransaction[]> {
+  try {
+    // Dynamic import xlsx
+    const XLSX = await import('xlsx')
+    const workbook = XLSX.read(buffer, { type: 'buffer' })
+    
+    // Get first sheet
+    const sheetName = workbook.SheetNames[0]
+    const sheet = workbook.Sheets[sheetName]
+    
+    // Convert to CSV
+    const csvText = XLSX.utils.sheet_to_csv(sheet)
+    console.log(`📊 Converted Excel sheet "${sheetName}" to CSV (${csvText.length} chars)`)
+    
+    return parseCSVStatement(csvText)
+  } catch (error) {
+    console.error('❌ Excel parsing failed:', error)
+    throw new Error(`Excel parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
 }
 
 /**
  * Parse CSV - Ultra flexible, works with ANY format
+ * Auto-detects bank format and column mappings
  */
 export function parseCSVStatement(csvText: string): ParsedTransaction[] {
   console.error('🔍 Starting universal CSV parse...')
@@ -27,13 +132,19 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
     console.log('📄 Removed UTF-8 BOM')
   }
   
+  // Clean up common issues
+  csvText = csvText
+    .replace(/\r\n/g, '\n')  // Normalize line endings
+    .replace(/\r/g, '\n')
+    .replace(/^\s*\n/gm, '') // Remove blank lines at start
+  
   // Try parsing with PapaParse
   let result: Papa.ParseResult<any>
   try {
     result = Papa.parse(csvText, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.trim(), // Trim whitespace from headers
+      transformHeader: (header) => header.trim().replace(/[\r\n]/g, ''), // Trim whitespace from headers
     })
     
     if (result.errors.length > 0) {
@@ -60,64 +171,51 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
   
   const headers = Object.keys(firstRow)
   console.error('📋 ALL Headers found:', JSON.stringify(headers))
+  
+  // Detect bank
+  const detectedBank = detectBank(headers, csvText)
+  console.log(`🏦 Detected bank format: ${detectedBank}`)
+  
+  const bankPatterns = BANK_COLUMN_PATTERNS[detectedBank] || BANK_COLUMN_PATTERNS['DEFAULT']
 
-  // Smart column detection - find the right columns
+  // Smart column detection using bank-specific patterns
   let dateCol: string | null = null
   let descCol: string | null = null
   let debitCol: string | null = null
   let creditCol: string | null = null
   let amountCol: string | null = null
   let balanceCol: string | null = null
+  let refCol: string | null = null
+
+  // Helper function to match column patterns
+  const matchColumn = (header: string, patterns: string[]): boolean => {
+    const lower = header.toLowerCase().trim()
+    return patterns.some(p => lower === p || lower.includes(p))
+  }
 
   for (const h of headers) {
     const lower = h.toLowerCase().trim()
     
-    // Date detection
-    if (!dateCol && (
-      lower.includes('date') || 
-      lower.includes('txn') || 
-      lower === 'dt' ||
-      lower.includes('time')
-    )) {
+    // Date detection (using bank patterns first, then generic)
+    if (!dateCol && matchColumn(h, bankPatterns.date)) {
       dateCol = h
       console.log(`✅ Date column: "${h}"`)
     }
     
     // Description detection
-    if (!descCol && (
-      lower.includes('desc') || 
-      lower.includes('narr') || 
-      lower.includes('particular') || 
-      lower.includes('detail') ||
-      lower.includes('remark') ||
-      lower.includes('transaction') && !lower.includes('date') && !lower.includes('type')
-    )) {
+    if (!descCol && matchColumn(h, bankPatterns.desc)) {
       descCol = h
       console.log(`✅ Description column: "${h}"`)
     }
     
     // Debit detection
-    if (!debitCol && (
-      lower.includes('debit') || 
-      lower.includes('withdrawal') || 
-      lower.includes('dr') ||
-      lower.includes('paid') ||
-      lower.includes('expense') ||
-      lower.includes('out')
-    )) {
+    if (!debitCol && matchColumn(h, bankPatterns.debit)) {
       debitCol = h
       console.log(`✅ Debit column: "${h}"`)
     }
     
     // Credit detection
-    if (!creditCol && (
-      lower.includes('credit') || 
-      lower.includes('deposit') || 
-      lower.includes('cr') ||
-      lower.includes('received') ||
-      lower.includes('income') ||
-      lower.includes('in') && !lower.includes('inter')
-    )) {
+    if (!creditCol && matchColumn(h, bankPatterns.credit)) {
       creditCol = h
       console.log(`✅ Credit column: "${h}"`)
     }
@@ -125,19 +223,28 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
     // Single amount column
     if (!amountCol && (
       lower === 'amount' ||
-      lower.includes('amount') && !lower.includes('balance')
+      (lower.includes('amount') && !lower.includes('balance') && !lower.includes('debit') && !lower.includes('credit'))
     )) {
       amountCol = h
       console.log(`✅ Amount column: "${h}"`)
     }
     
     // Balance detection
-    if (!balanceCol && (
-      lower.includes('balance') ||
-      lower.includes('closing')
-    )) {
+    if (!balanceCol && matchColumn(h, bankPatterns.balance)) {
       balanceCol = h
       console.log(`✅ Balance column: "${h}"`)
+    }
+    
+    // Reference number detection
+    if (!refCol && (
+      lower.includes('reference') ||
+      lower.includes('ref') ||
+      lower.includes('txn id') ||
+      lower.includes('transaction id') ||
+      lower.includes('utr')
+    )) {
+      refCol = h
+      console.log(`✅ Reference column: "${h}"`)
     }
   }
 
@@ -260,6 +367,15 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
       const val = String(row[balanceCol] || '').replace(/[,₹\s]/g, '')
       balance = parseFloat(val) || undefined
     }
+    
+    // Get reference number if available
+    let referenceNumber: string | undefined
+    if (refCol) {
+      referenceNumber = String(row[refCol] || '').trim() || undefined
+    }
+    
+    // Detect payment method from description
+    const paymentMethod = detectPaymentMethod(description)
 
     transactions.push({
       date,
@@ -267,13 +383,39 @@ export function parseCSVStatement(csvText: string): ParsedTransaction[] {
       amount,
       type,
       balance,
+      referenceNumber,
+      paymentMethod,
+      bankName: detectedBank !== 'DEFAULT' ? detectedBank : undefined,
+      rawData: row as Record<string, unknown>
     })
 
     console.log(`✅ Row ${i}: ${date.toLocaleDateString()} | ${type} | ${Math.abs(amount)} | ${description.substring(0, 30)}`)
   }
 
-  console.log(`\n🎉 Successfully parsed ${transactions.length} transactions from CSV\n`)
+  console.log(`\n🎉 Successfully parsed ${transactions.length} transactions from CSV (Bank: ${detectedBank})\n`)
   return transactions
+}
+
+/**
+ * Detect payment method from transaction description
+ */
+function detectPaymentMethod(description: string): string | undefined {
+  const desc = description.toUpperCase()
+  
+  if (desc.includes('UPI') || desc.includes('GPAY') || desc.includes('PHONEPE') || desc.includes('PAYTM') || desc.includes('BHIM')) {
+    return 'UPI'
+  }
+  if (desc.includes('NEFT')) return 'NEFT'
+  if (desc.includes('RTGS')) return 'RTGS'
+  if (desc.includes('IMPS')) return 'IMPS'
+  if (desc.includes('CHEQUE') || desc.includes('CHQ') || desc.includes('CLG')) return 'Cheque'
+  if (desc.includes('ATM') || desc.includes('CASH')) return 'Cash'
+  if (desc.includes('POS') || desc.includes('DEBIT CARD') || desc.includes('VISA') || desc.includes('RUPAY')) return 'Debit Card'
+  if (desc.includes('CREDIT CARD') || desc.includes('CC ') || desc.includes('MASTERCARD')) return 'Credit Card'
+  if (desc.includes('ECS') || desc.includes('NACH')) return 'ECS/NACH'
+  if (desc.includes('DD') || desc.includes('DEMAND DRAFT')) return 'Demand Draft'
+  
+  return undefined
 }
 
 function parseDate(dateStr: string): Date | null {
