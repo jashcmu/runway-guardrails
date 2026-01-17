@@ -42,14 +42,74 @@ interface TransactionCardProps {
   compact?: boolean
 }
 
-const CATEGORIES = ['Hiring', 'Marketing', 'SaaS', 'Cloud', 'G_A']
+// All categories - expanded list
+const CATEGORIES = [
+  // Personnel
+  'Hiring', 'Salaries', 'Benefits', 'Training',
+  // Sales & Marketing  
+  'Marketing', 'Sales', 'Advertising', 'Events',
+  // Technology
+  'SaaS', 'Cloud', 'ITInfrastructure', 'Software', 'Hardware', 'Security',
+  // Operations
+  'Rent', 'Utilities', 'OfficeSupplies', 'Equipment', 'Maintenance',
+  // Professional Services
+  'Legal', 'Accounting', 'Consulting', 'ProfessionalServices',
+  // Travel & Entertainment
+  'Travel', 'Meals', 'Entertainment',
+  // Finance
+  'Taxes', 'Insurance', 'BankFees', 'PaymentProcessing', 'InterestCharges',
+  // Other
+  'ResearchDevelopment', 'CustomerSupport', 'Subscriptions', 'Refunds', 'Depreciation', 'BadDebts', 'G_A', 'Other'
+]
 
 const CATEGORY_COLORS: Record<string, string> = {
+  // Personnel - Purple
   Hiring: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
-  Marketing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-  SaaS: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
-  Cloud: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
-  G_A: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+  Salaries: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  Benefits: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  Training: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  // Marketing - Green
+  Marketing: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  Sales: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  Advertising: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  Events: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  // Technology - Blue
+  SaaS: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  Cloud: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  ITInfrastructure: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  Software: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  Hardware: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  Security: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+  // Operations - Amber
+  Rent: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  Utilities: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  OfficeSupplies: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  Equipment: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  Maintenance: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  // Professional - Violet
+  Legal: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  Accounting: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  Consulting: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  ProfessionalServices: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  // Travel - Pink
+  Travel: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
+  Meals: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
+  Entertainment: 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300',
+  // Finance - Red
+  Taxes: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  Insurance: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  BankFees: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  PaymentProcessing: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  InterestCharges: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  // Other - Gray/Teal
+  ResearchDevelopment: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
+  CustomerSupport: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
+  Subscriptions: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
+  Refunds: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  Depreciation: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  BadDebts: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  G_A: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  Other: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
 }
 
 const TRANSACTION_TYPE_LABELS: Record<string, string> = {

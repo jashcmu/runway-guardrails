@@ -793,11 +793,61 @@ All transactions have been auto-categorized and your runway has been recalculate
                   onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as Category })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
-                  <option value="Hiring">Hiring & Salaries</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="SaaS">SaaS Tools</option>
-                  <option value="Cloud">Cloud Services</option>
-                  <option value="G_A">General & Admin</option>
+                  <optgroup label="Personnel">
+                    <option value="Hiring">Hiring & Recruitment</option>
+                    <option value="Salaries">Salaries & Wages</option>
+                    <option value="Benefits">Employee Benefits</option>
+                    <option value="Training">Training & Development</option>
+                  </optgroup>
+                  <optgroup label="Sales & Marketing">
+                    <option value="Marketing">Marketing</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Advertising">Advertising</option>
+                    <option value="Events">Events & Conferences</option>
+                  </optgroup>
+                  <optgroup label="Technology">
+                    <option value="SaaS">SaaS Tools</option>
+                    <option value="Cloud">Cloud Services</option>
+                    <option value="ITInfrastructure">IT Infrastructure</option>
+                    <option value="Software">Software</option>
+                    <option value="Hardware">Hardware</option>
+                    <option value="Security">Security</option>
+                  </optgroup>
+                  <optgroup label="Operations">
+                    <option value="Rent">Rent & Facilities</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="OfficeSupplies">Office Supplies</option>
+                    <option value="Equipment">Equipment & Furniture</option>
+                    <option value="Maintenance">Maintenance</option>
+                  </optgroup>
+                  <optgroup label="Professional Services">
+                    <option value="Legal">Legal</option>
+                    <option value="Accounting">Accounting & Audit</option>
+                    <option value="Consulting">Consulting</option>
+                    <option value="ProfessionalServices">Professional Services</option>
+                  </optgroup>
+                  <optgroup label="Travel & Entertainment">
+                    <option value="Travel">Travel</option>
+                    <option value="Meals">Meals & Food</option>
+                    <option value="Entertainment">Entertainment</option>
+                  </optgroup>
+                  <optgroup label="Finance">
+                    <option value="Taxes">Taxes & Duties</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="BankFees">Bank Fees</option>
+                    <option value="PaymentProcessing">Payment Processing</option>
+                    <option value="InterestCharges">Interest & Finance</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option value="ResearchDevelopment">R&D</option>
+                    <option value="CustomerSupport">Customer Support</option>
+                    <option value="Subscriptions">Subscriptions</option>
+                    <option value="Refunds">Refunds & Returns</option>
+                    <option value="Depreciation">Depreciation</option>
+                    <option value="BadDebts">Bad Debts</option>
+                    <option value="G_A">General & Admin</option>
+                    <option value="Other">Other</option>
+                  </optgroup>
                 </select>
               </div>
 
