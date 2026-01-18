@@ -223,17 +223,6 @@ export default function ExpenseTable({ transactions, onUpdate }: ExpenseTablePro
     }
   }
 
-  const categories = [
-    'Marketing',
-    'Operations',
-    'Technology',
-    'Hiring_Salaries',
-    'Office_Rent',
-    'Legal_Compliance',
-    'Travel',
-    'Miscellaneous',
-  ]
-
   if (transactions.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
