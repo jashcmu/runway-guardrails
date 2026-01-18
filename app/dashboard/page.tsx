@@ -320,6 +320,25 @@ All transactions have been auto-categorized and your runway has been recalculate
           </p>
         </div>
 
+        {/* New Features Banner */}
+        <div className="mb-6 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-3xl">🎉</div>
+              <div>
+                <h3 className="font-bold text-lg">New: Financial Intelligence Layer</h3>
+                <p className="text-sm text-green-50">40+ expense categories, AI-powered insights, vendor recommendations & more!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAddExpense(true)}
+              className="px-4 py-2 bg-white text-green-600 rounded-lg hover:bg-green-50 font-medium text-sm whitespace-nowrap"
+            >
+              Try It Now →
+            </button>
+          </div>
+        </div>
+
         {/* Alerts Banner */}
         {alerts.filter(a => !a.isRead && a.severity === 'high').length > 0 && (
           <div 
@@ -537,6 +556,43 @@ All transactions have been auto-categorized and your runway has been recalculate
             currentBalance={cashBalance}
           />
         </div>
+
+        {/* Category Overview - NEW FEATURE */}
+        {dashboardData?.categories && dashboardData.categories.length > 0 && (
+          <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-1">✨ Enhanced Categories</h2>
+                <p className="text-sm text-gray-600">40+ expense categories now available for better tracking</p>
+              </div>
+              <button
+                onClick={() => setShowAddExpense(true)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+              >
+                Add Expense
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {dashboardData.categories.slice(0, 12).map((cat: any) => (
+                <div key={cat.category} className="bg-white rounded-lg p-3 border border-gray-200 hover:shadow-md transition-shadow">
+                  <div className="text-xs font-medium text-gray-600 mb-1">{cat.category}</div>
+                  <div className="text-lg font-bold text-gray-900">
+                    ₹{cat.spend.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">{cat.percentage}%</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => window.location.href = '/dashboard/analytics'}
+                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                View All Categories & Analytics →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Benchmarks */}
         <div className="mb-6">
