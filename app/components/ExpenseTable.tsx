@@ -45,9 +45,114 @@ export default function ExpenseTable({ transactions, onUpdate }: ExpenseTablePro
     }).format(value)
   }
 
-  const formatCategory = (category: string) => {
-    return category.replace(/_/g, ' & ')
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      // Personnel - Purple
+      'Hiring': 'bg-purple-100 text-purple-800',
+      'Salaries': 'bg-purple-100 text-purple-800',
+      'Benefits': 'bg-purple-100 text-purple-800',
+      'Training': 'bg-purple-100 text-purple-800',
+      // Marketing - Green
+      'Marketing': 'bg-green-100 text-green-800',
+      'Sales': 'bg-green-100 text-green-800',
+      'Advertising': 'bg-green-100 text-green-800',
+      'Events': 'bg-green-100 text-green-800',
+      // Technology - Blue
+      'SaaS': 'bg-blue-100 text-blue-800',
+      'Cloud': 'bg-blue-100 text-blue-800',
+      'ITInfrastructure': 'bg-blue-100 text-blue-800',
+      'Software': 'bg-blue-100 text-blue-800',
+      'Hardware': 'bg-blue-100 text-blue-800',
+      'Security': 'bg-blue-100 text-blue-800',
+      // Operations - Amber
+      'Rent': 'bg-amber-100 text-amber-800',
+      'Utilities': 'bg-amber-100 text-amber-800',
+      'OfficeSupplies': 'bg-amber-100 text-amber-800',
+      'Equipment': 'bg-amber-100 text-amber-800',
+      'Maintenance': 'bg-amber-100 text-amber-800',
+      // Professional - Violet
+      'Legal': 'bg-violet-100 text-violet-800',
+      'Accounting': 'bg-violet-100 text-violet-800',
+      'Consulting': 'bg-violet-100 text-violet-800',
+      'ProfessionalServices': 'bg-violet-100 text-violet-800',
+      // Travel - Pink
+      'Travel': 'bg-pink-100 text-pink-800',
+      'Meals': 'bg-pink-100 text-pink-800',
+      'Entertainment': 'bg-pink-100 text-pink-800',
+      // Finance - Red
+      'Taxes': 'bg-red-100 text-red-800',
+      'Insurance': 'bg-red-100 text-red-800',
+      'BankFees': 'bg-red-100 text-red-800',
+      'PaymentProcessing': 'bg-red-100 text-red-800',
+      'InterestCharges': 'bg-red-100 text-red-800',
+      // Other - Gray/Teal
+      'ResearchDevelopment': 'bg-teal-100 text-teal-800',
+      'CustomerSupport': 'bg-teal-100 text-teal-800',
+      'Subscriptions': 'bg-teal-100 text-teal-800',
+      'Refunds': 'bg-gray-100 text-gray-800',
+      'Depreciation': 'bg-gray-100 text-gray-800',
+      'BadDebts': 'bg-gray-100 text-gray-800',
+      'G_A': 'bg-gray-100 text-gray-800',
+      'Other': 'bg-gray-100 text-gray-800',
+    }
+    return colors[category] || 'bg-gray-100 text-gray-800'
   }
+
+  const formatCategory = (category: string) => {
+    const displayNames: Record<string, string> = {
+      'Hiring': 'Hiring & Recruitment',
+      'Salaries': 'Salaries & Wages',
+      'Benefits': 'Employee Benefits',
+      'Training': 'Training & Development',
+      'Marketing': 'Marketing',
+      'Sales': 'Sales',
+      'Advertising': 'Advertising',
+      'Events': 'Events & Conferences',
+      'SaaS': 'SaaS Tools',
+      'Cloud': 'Cloud Services',
+      'ITInfrastructure': 'IT Infrastructure',
+      'Software': 'Software',
+      'Hardware': 'Hardware',
+      'Security': 'Security',
+      'Rent': 'Rent & Facilities',
+      'Utilities': 'Utilities',
+      'OfficeSupplies': 'Office Supplies',
+      'Equipment': 'Equipment & Furniture',
+      'Maintenance': 'Maintenance',
+      'Legal': 'Legal',
+      'Accounting': 'Accounting & Audit',
+      'Consulting': 'Consulting',
+      'ProfessionalServices': 'Professional Services',
+      'Travel': 'Travel',
+      'Meals': 'Meals & Food',
+      'Entertainment': 'Entertainment',
+      'Taxes': 'Taxes & Duties',
+      'Insurance': 'Insurance',
+      'BankFees': 'Bank Fees',
+      'PaymentProcessing': 'Payment Processing',
+      'InterestCharges': 'Interest & Finance',
+      'ResearchDevelopment': 'R&D',
+      'CustomerSupport': 'Customer Support',
+      'Subscriptions': 'Subscriptions',
+      'Refunds': 'Refunds & Returns',
+      'Depreciation': 'Depreciation',
+      'BadDebts': 'Bad Debts',
+      'G_A': 'General & Admin',
+      'Other': 'Other',
+    }
+    return displayNames[category] || category.replace(/_/g, ' & ')
+  }
+
+  const categories: Category[] = [
+    'Hiring', 'Salaries', 'Benefits', 'Training',
+    'Marketing', 'Sales', 'Advertising', 'Events',
+    'SaaS', 'Cloud', 'ITInfrastructure', 'Software', 'Hardware', 'Security',
+    'Rent', 'Utilities', 'OfficeSupplies', 'Equipment', 'Maintenance',
+    'Legal', 'Accounting', 'Consulting', 'ProfessionalServices',
+    'Travel', 'Meals', 'Entertainment',
+    'Taxes', 'Insurance', 'BankFees', 'PaymentProcessing', 'InterestCharges',
+    'ResearchDevelopment', 'CustomerSupport', 'Subscriptions', 'Refunds', 'Depreciation', 'BadDebts', 'G_A', 'Other'
+  ]
 
   const handleEdit = (transaction: Transaction) => {
     setEditingId(transaction.id)

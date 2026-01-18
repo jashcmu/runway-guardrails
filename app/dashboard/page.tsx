@@ -565,12 +565,40 @@ All transactions have been auto-categorized and your runway has been recalculate
                 <h2 className="text-2xl font-bold text-gray-900 mb-1">✨ Enhanced Categories</h2>
                 <p className="text-sm text-gray-600">40+ expense categories now available for better tracking</p>
               </div>
-              <button
-                onClick={() => setShowAddExpense(true)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
-              >
-                Add Expense
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (confirm('This will recategorize all your existing expenses using AI. Continue?')) {
+                      try {
+                        const res = await fetch('/api/transactions/recategorize-all', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ companyId: selectedCompany.id }),
+                        })
+                        const data = await res.json()
+                        if (data.success) {
+                          alert(`✅ ${data.message}`)
+                          fetchTransactions()
+                          fetchDashboard()
+                        } else {
+                          alert(`Error: ${data.error}`)
+                        }
+                      } catch (error) {
+                        alert('Failed to recategorize expenses')
+                      }
+                    }
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
+                >
+                  🔄 Recategorize All
+                </button>
+                <button
+                  onClick={() => setShowAddExpense(true)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                >
+                  Add Expense
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {dashboardData.categories.slice(0, 12).map((cat: any) => (
